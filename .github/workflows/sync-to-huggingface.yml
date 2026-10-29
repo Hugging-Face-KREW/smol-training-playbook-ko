@@ -28,9 +28,33 @@ jobs:
       - name: Sync files to Space
         env:
           HF_OIDC_RESOURCE: spaces/huggingface-KREW/smol-training-playbook-ko
-        run: >-
-          hf upload huggingface-KREW/smol-training-playbook-ko . .
-          --repo-type space
-          --delete '*'
-          --exclude '.github/*' --exclude '.git/*'
-          --commit-message "Sync from GitHub ${GITHUB_SHA}"
+        shell: bash
+        run: |
+          set -euo pipefail
+          hf_token="$(hf auth token)"
+          echo "::add-mask::$hf_token"
+          export HF_SYNC_TOKEN="$hf_token"
+          askpass="$RUNNER_TEMP/hf-askpass.sh"
+          cat > "$askpass" <<'ASKPASS'
+          #!/bin/sh
+          case "$1" in
+            *Username*) printf '%s\n' 'oauth2' ;;
+            *) printf '%s\n' "$HF_SYNC_TOKEN" ;;
+          esac
+          ASKPASS
+          chmod 700 "$askpass"
+          export GIT_ASKPASS="$askpass"
+          export GIT_TERMINAL_PROMPT=0
+          destination="$RUNNER_TEMP/hf-space"
+          GIT_LFS_SKIP_SMUDGE=1 git clone https://huggingface.co/spaces/huggingface-KREW/smol-training-playbook-ko "$destination"
+          rsync -a --delete --exclude='.git/' --exclude='.github/' "$GITHUB_WORKSPACE/" "$destination/"
+          cd "$destination"
+          git config user.name 'KREW GitHub Sync'
+          git config user.email 'noreply@huggingface.co'
+          git add --all
+          if git diff --cached --quiet; then
+            echo 'Space already matches GitHub.'
+          else
+            git commit -m "Sync from GitHub ${GITHUB_SHA}"
+            git push origin main
+          fi
