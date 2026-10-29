@@ -7,14 +7,14 @@ const { tableOfContentAutoCollapse = false } = Astro.props as Props;
 
 <nav
   class="table-of-contents toc-loading"
-  aria-label="Table of Contents"
+  aria-label="목차"
   data-auto-collapse={tableOfContentAutoCollapse ? "1" : "0"}
 >
-  <div class="title">Table of Contents</div>
+  <div class="title">목차</div>
   <div id="article-toc-placeholder"></div>
 </nav>
 <details class="table-of-contents-mobile toc-loading">
-  <summary>Table of Contents</summary>
+  <summary>목차</summary>
   <div id="article-toc-mobile-placeholder"></div>
 </details>
 
