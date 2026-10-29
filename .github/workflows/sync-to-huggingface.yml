@@ -32,5 +32,5 @@ jobs:
           hf upload huggingface-KREW/smol-training-playbook-ko . .
           --repo-type space
           --delete '*'
-          --exclude '.github/*' '.git/*'
+          --exclude '.github/*' --exclude '.git/*'
           --commit-message "Sync from GitHub ${GITHUB_SHA}"
