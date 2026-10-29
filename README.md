@@ -16,6 +16,20 @@ tags:
 thumbnail: >-
   https://huggingface.co/spaces/HuggingFaceTB/smol-training-playbook/public/thumb.png
 ---
+
+## Smol Training Playbook 한국어 번역
+
+Hugging Face KREW의 한국어 번역 저장소입니다.
+
+- [한국어 Space](https://huggingface.co/spaces/huggingface-KREW/smol-training-playbook-ko)
+- [원문 Space](https://huggingface.co/spaces/HuggingFaceTB/smol-training-playbook)
+- 번역은 브랜치에서 작업하고 GitHub PR로 리뷰합니다.
+- `main`에 머지하면 GitHub Actions가 한국어 Space에 파일을 동기화하고 Space가 다시 빌드됩니다.
+- Space 인증은 Trusted Publisher(OIDC)를 사용합니다. 저장소, `main` 브랜치, `sync-to-huggingface.yml` workflow로 제한합니다.
+- Space에서 직접 수정하면 다음 동기화에서 덮어써질 수 있습니다. 파일 삭제도 동기화됩니다.
+
+초기 파일은 한국어 Space의 `179c71bb4a1c10c8be98768dea04fbc2cfc8e9f9` 커밋에서 가져왔습니다. 아래는 원본 템플릿 문서입니다.
+
 <div align="center">
 
 # Research Article Template

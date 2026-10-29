@@ -1,0 +1,36 @@
+name: Sync to Hugging Face Space
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: huggingface-space
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          lfs: true
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install Hugging Face CLI
+        run: pip install 'huggingface_hub>=1.19.0'
+      - name: Sync files to Space
+        env:
+          HF_OIDC_RESOURCE: spaces/huggingface-KREW/smol-training-playbook-ko
+        run: >-
+          hf upload huggingface-KREW/smol-training-playbook-ko . .
+          --repo-type space
+          --delete '*'
+          --exclude '.github/*' '.git/*'
+          --commit-message "Sync from GitHub ${GITHUB_SHA}"
