@@ -21,7 +21,7 @@ thumbnail: >-
 
 Hugging Face KREW의 한국어 번역 저장소입니다.
 
-**참여하기: [번역 작업 가이드](TRANSLATION_GUIDE.md)** · [영문 원본](docs/original/article.en.mdx)
+**참여하기: [번역 작업 가이드](TRANSLATION_GUIDE.md)** · [주차별 본문·그림 배정표](docs/SMOL_TRANSLATION_ASSIGNMENTS.md) · [영문 원본](docs/original/article.en.mdx)
 
 - [한국어 Space](https://huggingface.co/spaces/huggingface-KREW/smol-training-playbook-ko)
 - [원문 Space](https://huggingface.co/spaces/HuggingFaceTB/smol-training-playbook)

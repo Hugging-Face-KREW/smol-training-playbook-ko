@@ -10,11 +10,15 @@
 | --- | --- | --- |
 | 번역본 | [`app/src/content/article.mdx`](app/src/content/article.mdx) | 실제 Space에 표시되는 전체 본문. 담당 구간을 이 파일에서 수정합니다. |
 | 영문 원본 | [`docs/original/article.en.mdx`](docs/original/article.en.mdx) | 번역과 리뷰 때 비교할 고정 원문. 수정하지 않습니다. |
-| 그림과 차트 | [`app/src/content/embeds/`](app/src/content/embeds) | 인터랙티브 그림의 문구. 본문 담당 범위와 별도로 작업 범위를 정합니다. |
+| 그림과 차트 | [`app/src/content/embeds/`](app/src/content/embeds) | 인터랙티브 그림의 문구. 해당 본문 담당자가 함께 번역합니다. 주차별 파일은 [Smol 배정표](docs/SMOL_TRANSLATION_ASSIGNMENTS.md)에서 확인합니다. |
 
 영문 원본은 [초기 Space 커밋](https://huggingface.co/spaces/huggingface-KREW/smol-training-playbook-ko/commit/179c71bb4a1c10c8be98768dea04fbc2cfc8e9f9)의 `article.mdx`를 그대로 보관한 파일입니다. 원문 Space를 나중에 업데이트하더라도 이 파일은 임의로 교체하지 않습니다.
 
-작업 전에 주차별 담당자와 범위를 확인합니다. 범위는 **시작 줄과 끝 줄을 모두 포함**하며, PR에도 아래처럼 적습니다. 다음은 형식 예시이며 실제 배정표가 아닙니다.
+작업 전에 [Smol 주차별 번역 배정표](docs/SMOL_TRANSLATION_ASSIGNMENTS.md)에서 담당 본문 줄과 인터랙티브 그림 파일을 확인합니다. 발표·리뷰어 배정은 [발표 신청 시트](https://docs.google.com/spreadsheets/d/1nTZjClBRm8hwDR9pfx5JGZyhUf3Ajn0k76w8oPMudrk/edit#gid=709064888), 마감은 같은 문서의 [주차별 범위 탭](https://docs.google.com/spreadsheets/d/1nTZjClBRm8hwDR9pfx5JGZyhUf3Ajn0k76w8oPMudrk/edit#gid=550580206)에서 확인합니다.
+
+각주·그림 캡션·표·사이드노트·인터랙티브 그림 문구도 해당 본문 담당자가 같은 PR에서 번역합니다. 공용 그림 파일과 외부 iframe의 처리 방법은 배정표를 따릅니다. Ultra의 번역 범위는 추후 정합니다.
+
+본문 줄 범위는 **시작 줄과 끝 줄을 모두 포함**하며, PR에도 아래처럼 적습니다. 다음은 형식 예시이며 실제 배정표가 아닙니다.
 
 ```text
 주차: 1주차
@@ -31,7 +35,7 @@
 - 빈 줄을 추가하거나 삭제하지 않고, 문단을 합치거나 나누지 않습니다.
 - 에디터의 자동 줄바꿈(soft wrap)은 사용해도 됩니다. 화면에서만 접혀 보이고 실제 줄은 늘어나지 않습니다.
 - 전체 파일 포맷팅과 저장 시 자동 포맷팅은 끕니다. Prettier로 본문 전체를 정렬하지 않습니다.
-- 담당 범위 밖의 문장, 상단 metadata, import를 함께 수정하지 않습니다. 필요한 수정은 별도 PR로 제안합니다.
+- 담당 범위 밖의 문장과 import·설정은 수정하지 않습니다. 상단 제목·부제·설명은 1주차 담당 범위에서 번역합니다. 필요한 수정은 별도 PR로 제안합니다.
 - 리뷰 suggestion도 선택한 줄 수와 같은 줄 수로 작성하고 적용합니다.
 
 파일 전체 줄 수가 같다는 것만으로는 충분하지 않습니다. 앞에서 한 줄을 추가하고 뒤에서 한 줄을 삭제해도 총 줄 수는 같기 때문입니다. **각 줄의 대응과 빈 줄 위치까지 유지**해야 합니다.
@@ -79,13 +83,16 @@ Smol Training Playbook의 한국어 번역 초안을 작성해줘.
 원문: docs/original/article.en.mdx
 수정할 파일: app/src/content/article.mdx
 담당 범위: L시작-L끝 (양 끝 줄 포함)
+함께 번역할 그림 파일: docs/SMOL_TRANSLATION_ASSIGNMENTS.md의 내 주차 파일 목록 확인
 
 - 담당 범위의 자연어 설명만 번역해줘.
 - 원문 한 줄을 번역본 한 줄로 대응시키고, 실제 줄바꿈과 빈 줄 위치를 유지해줘.
 - 줄 추가·삭제, 문단 재배치, 전체 파일 포맷팅은 하지 마.
 - 코드, 실험 출력, 수식, 인용 키, URL, import, 컴포넌트 문법은 유지해줘.
-- title/caption/alt 안의 자연어 설명은 번역하되 문법은 보존해줘.
-- 담당 범위 밖과 영문 원본은 수정하지 마.
+- title/caption/alt와 config 안의 자연어 설명은 번역하되 문법과 데이터 키는 보존해줘.
+- 해당 본문의 각주·캡션·표·사이드노트와 배정된 인터랙티브 그림 문구도 함께 번역해줘.
+- 그림의 HTML/JavaScript 문법·데이터 키·수치·계산 로직은 유지해줘. 공용 그림과 외부 iframe은 배정표의 규칙을 따라줘.
+- 담당 본문 줄과 배정된 그림 파일 밖, 영문 원본은 수정하지 마.
 - 애매한 번역은 본문에 메모를 넣지 말고 대화에서 따로 알려줘.
 - 수정 후 diff를 확인하고 범위·줄 대응을 지켰는지 보고해줘.
 - 커밋, push, PR 생성은 하지 마.
@@ -122,10 +129,11 @@ npm run build
 cd ..
 ```
 
-설치 과정에서 lock 파일이 변경됐다면 번역과 관계없는 변경을 섞지 않습니다. 커밋에는 담당 본문 파일만 지정합니다.
+설치 과정에서 lock 파일이 변경됐다면 번역과 관계없는 변경을 섞지 않습니다. 커밋에는 담당 본문과 실제 번역한 그림 파일만 지정합니다. 아래 예시의 그림 경로는 본인 파일로 바꾸고, 여러 파일이면 각각 지정합니다.
 
 ```bash
 git add app/src/content/article.mdx
+git add app/src/content/embeds/본인이-수정한-그림.html
 git commit -m "Translate introduction into Korean"
 git push -u origin translate/week01-introduction
 ```
@@ -141,12 +149,15 @@ PR 본문에 아래 내용을 채웁니다.
 - 주차 / 담당자:
 - 섹션:
 - 원문 기준 줄: L시작-L끝
+- 함께 번역한 인터랙티브 그림 파일:
 
 ## 확인
 - [ ] 담당 구간 전체를 원문과 나란히 읽었습니다.
-- [ ] 담당 범위 밖을 수정하지 않았습니다.
+- [ ] 담당 본문 줄과 배정된 그림 파일 밖을 수정하지 않았습니다.
+- [ ] 각주·캡션·표·사이드노트·인터랙티브 그림 문구를 확인했습니다.
 - [ ] 각 줄의 대응과 빈 줄 위치를 유지했습니다.
 - [ ] 코드·수식·인용 키·링크·MDX 문법을 유지했습니다.
+- [ ] 수정한 그림의 화면과 동작을 확인했습니다. 미확인 항목은 아래에 적었습니다.
 
 ## 검토가 필요한 표현
 - 없으면 '없음'으로 적습니다.
