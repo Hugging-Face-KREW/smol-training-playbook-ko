@@ -1,3 +1,5 @@
+> **한국어 번역 참여자는 [번역 작업 가이드](TRANSLATION_GUIDE.md)를 따라주세요.** 본문 줄 번호를 유지해야 하므로 아래 템플릿의 전체 파일 포맷팅 안내는 번역에 적용하지 않습니다. 아래 내용은 원본 템플릿의 개발 기여 안내입니다.
+
 # Contributing to Research Article Template
 
 Thank you for your interest in contributing to the Research Article Template! This document provides guidelines and information for contributors.
