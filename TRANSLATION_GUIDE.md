@@ -12,7 +12,7 @@
 | 영문 원본 | [`docs/original/article.en.mdx`](docs/original/article.en.mdx) | 번역과 리뷰 때 비교할 고정 원문. 수정하지 않습니다. |
 | 그림과 차트 | [`app/src/content/embeds/`](app/src/content/embeds) | 인터랙티브 그림의 문구. 본문 담당 범위와 별도로 작업 범위를 정합니다. |
 
-영문 원본은 [초기 Space 커밋](https://huggingface.co/spaces/huggingface-KREW/smol-training-playbook-ko/commit/179c71bb4a1c10c8be98768dea04fbc2cfc8e9f9)의 `article.mdx`를 그대로 보관한 파일입니다. 번역본과 원문의 줄을 대조하는 기준이며, 렌더링용 파일은 아닙니다. 원문 Space를 나중에 업데이트하더라도 이 기준 파일은 임의로 교체하지 않습니다.
+영문 원본은 [초기 Space 커밋](https://huggingface.co/spaces/huggingface-KREW/smol-training-playbook-ko/commit/179c71bb4a1c10c8be98768dea04fbc2cfc8e9f9)의 `article.mdx`를 그대로 보관한 파일입니다. 원문 Space를 나중에 업데이트하더라도 이 파일은 임의로 교체하지 않습니다.
 
 작업 전에 주차별 담당자와 범위를 확인합니다. 범위는 **시작 줄과 끝 줄을 모두 포함**하며, PR에도 아래처럼 적습니다. 다음은 형식 예시이며 실제 배정표가 아닙니다.
 
