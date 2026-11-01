@@ -183,7 +183,7 @@ PR 본문에 아래 내용을 채웁니다.
 
 ## 7. 리뷰 반영과 머지
 
-번역자는 제안을 읽고 동의하는 수정만 반영합니다.
+번역자는 제안을 읽고 동의하는 suggestion을 반영합니다.
 
 - 한 건씩 적용: **Commit suggestion**
 - 여러 건을 묶어서 적용: **Add suggestion to batch → Commit suggestions**
