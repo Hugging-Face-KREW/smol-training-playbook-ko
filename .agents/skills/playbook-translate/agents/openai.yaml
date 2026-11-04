@@ -1,0 +1,4 @@
+interface:
+  display_name: "Playbook 한국어 번역"
+  short_description: "From Smol to Ultra Scale 스터디의 줄 대응 번역과 검토"
+  default_prompt: "$playbook-translate로 이 스터디의 담당 구간을 번역하고 원문과 줄 단위로 대조해 주세요."
