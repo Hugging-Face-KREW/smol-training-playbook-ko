@@ -15,6 +15,7 @@ import remarkIgnoreCitationsInCode from './plugins/remark/ignore-citations-in-co
 import remarkUnwrapCitationLinks from './plugins/remark/unwrap-citation-links.mjs';
 import remarkDirective from 'remark-directive';
 import remarkOutputContainer from './plugins/remark/output-container.mjs';
+import remarkSourceHeadingIds from './plugins/remark/source-heading-ids.mjs';
 import rehypeRestoreAtInCode from './plugins/rehype/restore-at-in-code.mjs';
 import rehypeWrapTables from './plugins/rehype/wrap-tables.mjs';
 import rehypeWrapOutput from './plugins/rehype/wrap-outputs.mjs';
@@ -53,7 +54,8 @@ export default defineConfig({
       remarkMath,
       [remarkFootnotes, { inlineNotes: true }],
       remarkDirective,
-      remarkOutputContainer
+      remarkOutputContainer,
+      remarkSourceHeadingIds
     ],
     rehypePlugins: [
       rehypeSlug,

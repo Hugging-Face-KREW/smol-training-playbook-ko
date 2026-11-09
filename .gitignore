@@ -12,7 +12,8 @@ build/
 .idea/
 .vscode/
 .astro/
-.claude/
+.claude/*
+!.claude/skills/
 *.swp
 .DS_Store
 # Node
