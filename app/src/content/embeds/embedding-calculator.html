@@ -411,15 +411,15 @@
       container.innerHTML = `
         <div class="controls-grid">
           <div class="slider-group">
-            <label for="vocabSize">Vocabulary Size <span class="slider-value" id="vocabValue">128k</span></label>
+            <label for="vocabSize">어휘 크기 <span class="slider-value" id="vocabValue">128k</span></label>
             <input type="range" id="vocabSize" min="32000" max="256000" step="1000" value="128000">
           </div>
           <div class="slider-group">
-            <label for="hiddenSize">Hidden Size <span class="slider-value" id="hiddenValue">2048</span></label>
+            <label for="hiddenSize">은닉 크기 <span class="slider-value" id="hiddenValue">2048</span></label>
             <input type="range" id="hiddenSize" min="512" max="8192" step="64" value="2048">
           </div>
           <div class="slider-group">
-            <label for="modelSize">Total Model Size (M) <span class="slider-value" id="modelValue">1460M</span></label>
+            <label for="modelSize">전체 모델 크기 (M) <span class="slider-value" id="modelValue">1460M</span></label>
             <input type="range" id="modelSize" min="100" max="10000" step="100" value="1460">
           </div>
         </div>
@@ -427,15 +427,15 @@
         <div class="results-summary">
           <div class="summary-grid">
             <div class="summary-card">
-              <div class="summary-label">Total Embedding Parameters</div>
+              <div class="summary-label">전체 임베딩 파라미터</div>
               <div class="summary-value" id="totalEmbeddingTop">524M</div>
             </div>
             <div class="summary-card">
-              <div class="summary-label">Percentage of Model</div>
+              <div class="summary-label">모델 대비 비율</div>
               <div class="summary-value" id="percentageTop">44%</div>
             </div>
             <div class="summary-card">
-              <div class="summary-label">Weight Tying Savings</div>
+              <div class="summary-label">임베딩 공유로 절약</div>
               <div class="summary-value" id="savingsTop">262M (22%)</div>
             </div>
           </div>
@@ -444,11 +444,11 @@
         <div class="comparison">
           <div class="network-side no-tying">
             <div class="network-icon cross"></div>
-            <div class="network-title">Separate Embeddings</div>
+            <div class="network-title">비공유 임베딩</div>
             <div class="model-size untied" id="modelSizeUntied">1.46B</div>
             
             <div class="network-layer">
-              <div class="layer-title">Input Embedding</div>
+              <div class="layer-title">입력 임베딩</div>
               <div class="matrix-visual">
                 <div class="matrix-grid" id="inputMatrix1"></div>
                 <div class="matrix-label" id="inputDim1">128k × 2048</div>
@@ -458,21 +458,21 @@
             <div class="connection-line"></div>
             
             <div class="network-layer">
-              <div class="layer-title">Layer 1</div>
+              <div class="layer-title">레이어 1</div>
               <div class="neurons-layer" id="neurons1"></div>
             </div>
             
             <div class="dots">⋮</div>
             
             <div class="network-layer">
-              <div class="layer-title">Layer N</div>
+              <div class="layer-title">레이어 N</div>
               <div class="neurons-layer" id="neurons2"></div>
             </div>
             
             <div class="connection-line"></div>
             
             <div class="network-layer">
-              <div class="layer-title">Output Projection</div>
+              <div class="layer-title">출력 프로젝션</div>
               <div class="matrix-visual">
                 <div class="matrix-grid" id="outputMatrix1"></div>
                 <div class="matrix-label" id="outputDim1">2048 × 128k</div>
@@ -482,7 +482,7 @@
           
           <div class="network-side with-tying">
             <div class="network-icon check"></div>
-            <div class="network-title">Tied Embeddings</div>
+            <div class="network-title">공유 임베딩</div>
             <div class="model-size tied" id="modelSizeTied">1.20B</div>
             <div class="sharing-arrow">
               <div class="arrow-head-top"></div>
@@ -490,7 +490,7 @@
             </div>
             
             <div class="network-layer">
-              <div class="layer-title">Input Embedding</div>
+              <div class="layer-title">입력 임베딩</div>
               <div class="matrix-visual">
                 <div class="matrix-grid" id="inputMatrix2"></div>
                 <div class="matrix-label" id="inputDim2">128k × 2048</div>
@@ -500,21 +500,21 @@
             <div class="connection-line"></div>
             
             <div class="network-layer">
-              <div class="layer-title">Layer 1</div>
+              <div class="layer-title">레이어 1</div>
               <div class="neurons-layer" id="neurons3"></div>
             </div>
             
             <div class="dots">⋮</div>
             
             <div class="network-layer">
-              <div class="layer-title">Layer N</div>
+              <div class="layer-title">레이어 N</div>
               <div class="neurons-layer" id="neurons4"></div>
             </div>
             
             <div class="connection-line"></div>
             
             <div class="network-layer">
-              <div class="layer-title">Output Projection (Shared)</div>
+              <div class="layer-title">출력 프로젝션 (공유)</div>
               <div class="matrix-visual">
                 <div class="matrix-grid" id="outputMatrix2"></div>
                 <div class="matrix-label" id="outputDim2">2048 × 128k</div>
@@ -640,7 +640,7 @@
         container.querySelector('#inputDim1').textContent = `${vocabK} × ${hiddenK}`;
         container.querySelector('#outputDim1').textContent = `${hiddenK} × ${vocabK}`;
         container.querySelector('#inputDim2').textContent = `${vocabK} × ${hiddenK}`;
-        container.querySelector('#outputDim2').innerHTML = `${hiddenK} × ${vocabK}<br><span style="font-size: 0.8em; opacity: 0.7;">(Transposed)</span>`;
+        container.querySelector('#outputDim2').innerHTML = `${hiddenK} × ${vocabK}<br><span style="font-size: 0.8em; opacity: 0.7;">(전치)</span>`;
       }
 
       function updateCalculations() {

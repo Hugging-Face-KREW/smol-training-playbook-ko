@@ -261,7 +261,7 @@
       header.className = 'chart-header';
       const legend = document.createElement('div');
       legend.className = 'legend-bottom';
-      legend.innerHTML = '<div class="legend-title">Legend</div><div class="items"></div>';
+      legend.innerHTML = '<div class="legend-title">범례</div><div class="items"></div>';
       header.appendChild(legend);
 
       const chartCard = document.createElement('div');
@@ -271,7 +271,7 @@
       // Reset button (absolute positioned in chart)
       const resetBtn = document.createElement('button');
       resetBtn.className = 'reset-button';
-      resetBtn.textContent = 'Reset View';
+      resetBtn.textContent = '보기 초기화';
       Object.assign(resetBtn.style, {
         position: 'absolute',
         top: '12px',
@@ -331,9 +331,9 @@
         smoothingCurve: embedConfig.smoothingCurve || 'monotoneX',
         transitionDuration: 600,
         dataUrl: embedConfig.dataUrl || null,
-        title: embedConfig.title || 'Chart',
-        xAxisLabel: embedConfig.xAxisLabel || 'Consumed tokens',
-        yAxisLabel: embedConfig.yAxisLabel || 'Loss',
+        title: embedConfig.title || '차트',
+        xAxisLabel: embedConfig.xAxisLabel || '학습한 토큰 수',
+        yAxisLabel: embedConfig.yAxisLabel || '손실',
         xColumn: embedConfig.xColumn || 'tokens',
         yColumn: embedConfig.yColumn || 'loss',
         runColumn: embedConfig.runColumn || 'run_name',
@@ -1061,7 +1061,7 @@
             } catch (_) { }
           }
 
-          if (!csvText) throw new Error('CSV file not found');
+          if (!csvText) throw new Error('CSV 파일을 찾을 수 없습니다');
 
           const rows = d3.csvParse(csvText, d => ({
             run: (d[CONFIG.runColumn] || '').trim(),
@@ -1169,7 +1169,7 @@
           if (ro) ro.observe(container);
         } catch (e) {
           const pre = document.createElement('pre');
-          pre.textContent = 'CSV load error: ' + (e && e.message ? e.message : e);
+          pre.textContent = 'CSV 불러오기 오류: ' + (e && e.message ? e.message : e);
           pre.style.color = 'var(--danger, #b00020)';
           pre.style.fontSize = '12px';
           container.appendChild(pre);

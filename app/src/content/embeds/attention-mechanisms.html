@@ -573,7 +573,7 @@
                     .stroke('none');
 
                 // CLKV text below the node (multi-line)
-                svg.text('Compressed\nlatent KV')
+                svg.text('압축된\n잠재 KV')
                     .font({
                         family: 'Arial, sans-serif',
                         size: 9,
@@ -607,7 +607,7 @@
                 // Add single "projection" label centered between both lines
                 const centerTextX = (clkvX + vGroupRightX) / 2 - 5;  // Shifted slightly to the right
                 const centerTextY = (vGroupTopY + kGroupBottomY) / 2;
-                svg.text('Projection')
+                svg.text('프로젝션')
                     .font({
                         family: 'Arial, sans-serif',
                         size: 9,
@@ -637,23 +637,23 @@
             container.innerHTML = `
                 <!-- Legend -->
                 <div class="legend">
-                    <div class="legend-title">Legend</div>
+                    <div class="legend-title">범례</div>
                     <div class="items">
                         <span class="item">
                             <span class="swatch" style="background-color: color-mix(in srgb, ${paletteColors.value} 40%, transparent); border-color: ${paletteColors.value};"></span>
-                            <span>Values</span>
+                            <span>값</span>
                         </span>
                         <span class="item">
                             <span class="swatch" style="background-color: color-mix(in srgb, ${paletteColors.key} 40%, transparent); border-color: ${paletteColors.key};"></span>
-                            <span>Keys</span>
+                            <span>키</span>
                         </span>
                         <span class="item">
                             <span class="swatch" style="background-color: color-mix(in srgb, ${paletteColors.query} 60%, transparent); border-color: ${paletteColors.query};"></span>
-                            <span>Queries</span>
+                            <span>쿼리</span>
                         </span>
                         <span class="item">
                             <span class="swatch hatched" style="background-color: transparent; border-color: #adb5bd; color: #adb5bd;"></span>
-                            <span>Cached during inference</span>
+                            <span>추론 시 캐시됨</span>
                         </span>
                     </div>
                 </div>
@@ -661,25 +661,25 @@
                 <div class="diagrams-grid">
                     <!-- DIAGRAM 1: Multi-head Attention -->
                     <div class="diagram-container">
-                        <div class="diagram-title">Multi-head attention</div>
+                        <div class="diagram-title">멀티헤드 어텐션</div>
                         <div class="diagram-svg-container" id="diagram-1"></div>
                     </div>
                     
                     <!-- DIAGRAM 2: Multi-query Attention -->
                     <div class="diagram-container">
-                        <div class="diagram-title">Multi-query attention</div>
+                        <div class="diagram-title">멀티쿼리 어텐션</div>
                         <div class="diagram-svg-container" id="diagram-2"></div>
                     </div>
                     
                     <!-- DIAGRAM 3: Grouped Query Attention -->
                     <div class="diagram-container">
-                        <div class="diagram-title">Grouped query attention</div>
+                        <div class="diagram-title">그룹 쿼리 어텐션</div>
                         <div class="diagram-svg-container" id="diagram-3"></div>
                     </div>
                     
                     <!-- DIAGRAM 4: Multi-head Latent Attention -->
                     <div class="diagram-container">
-                        <div class="diagram-title">Multi-head latent attention</div>
+                        <div class="diagram-title">멀티헤드 잠재 어텐션</div>
                         <div class="diagram-svg-container" id="diagram-4"></div>
                     </div>
                 </div>

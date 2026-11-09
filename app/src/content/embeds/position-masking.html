@@ -250,8 +250,8 @@
             // Configuration definitions
             const configs = [
                 {
-                    name: 'Causal Masking (window=8)',
-                    description: 'Model can only attend to past 8 tokens',
+                    name: '인과 마스킹 (윈도우=8)',
+                    description: '모델은 이전 토큰 8개만 참조할 수 있습니다',
                     compute: (row, col) => {
                         if (col < WINDOW_SIZE) return null; // Columns 0-7 are empty
                         if (col > row) return null; // Future tokens
@@ -261,7 +261,7 @@
                 },
                 {
                     name: 'RoPE ABF',
-                    description: 'Adjusted Base Frequency dividing by 2',
+                    description: '기본 주파수를 조정(Adjusted Base Frequency)해 2로 나눕니다',
                     compute: (row, col) => {
                         if (col === 0) return null; // First column empty
                         if (col > row) return null;
@@ -269,8 +269,8 @@
                     }
                 },
                 {
-                    name: 'Chunked Attention',
-                    description: 'Process sample in chunks of size 8',
+                    name: '청크 어텐션',
+                    description: '샘플을 크기 8의 청크 단위로 처리합니다',
                     compute: (row, col) => {
                         if (col > row) return null;
                         const rowChunk = Math.floor(row / WINDOW_SIZE);
@@ -280,8 +280,8 @@
                     }
                 },
                 {
-                    name: 'Sliding Window Attention',
-                    description: 'Each token attends to past 8 tokens',
+                    name: '슬라이딩 윈도우 어텐션',
+                    description: '각 토큰이 이전 토큰 8개를 참조합니다',
                     compute: (row, col) => {
                         if (col > row) return null;
                         if (row - col >= WINDOW_SIZE) return null;
@@ -289,8 +289,8 @@
                     }
                 },
                 {
-                    name: 'DCA (Dual Chunk Attention)',
-                    description: 'c=8, s=4, w=3 combining Pintra, Pinter, Successive',
+                    name: 'DCA (듀얼 청크 어텐션)',
+                    description: 'c=8, s=4, w=3으로 Pintra, Pinter, Successive를 결합합니다',
                     compute: (row, col) => {
                         if (col > row) return null;
 
@@ -367,7 +367,7 @@
 
             container.innerHTML = `
                 <div class="sentence-display">
-                  <div class="section-title">Single Document (16 tokens)</div>
+                  <div class="section-title">단일 문서 (16토큰)</div>
                   <div class="token-sequence" id="tokenSequence">
                     ${tokens.map((token, i) => `
                       <span class="token">
@@ -377,12 +377,12 @@
                     `).join('')}
                   </div>
                   <div style="margin-top: 10px; font-size: 0.9rem; color: var(--muted-color);">
-                    Pre-training window = 8
+                    사전 학습 윈도우 = 8
                   </div>
                 </div>
 
                 <div class="controls">
-                  <label>Attention Pattern</label>
+                  <label>어텐션 패턴</label>
                   <select id="configSelect">
                     ${configs.map((config, idx) => `<option value="${idx}">${config.name}</option>`).join('')}
                   </select>
@@ -512,11 +512,11 @@
                                 const toToken = tokens[col];
 
                                 tooltip.innerHTML = `
-                        <div style="font-weight: 600; margin-bottom: 4px;">Relative Position: ${displayValue}</div>
+                        <div style="font-weight: 600; margin-bottom: 4px;">상대 위치: ${displayValue}</div>
                         <div style="font-size: 11px; color: var(--muted-color);">
-                          Query: "${fromToken}" (pos ${row})<br>
-                          Key: "${toToken}" (pos ${col})<br>
-                          Distance: ${row - col} tokens
+                          쿼리: "${fromToken}" (위치 ${row})<br>
+                          키: "${toToken}" (위치 ${col})<br>
+                          거리: ${row - col}토큰
                         </div>
                       `;
                                 tooltip.classList.add('show');

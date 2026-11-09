@@ -691,74 +691,74 @@ In some cases, a bug can be solved by upgrading the library to the latest versio
 
 Following these rules might feel overly cautious, but the alternative is spending days debugging mysterious performance drops that turn out to have been caused by an unrelated dependency update from days earlier. The golden principle: Once you have a good setup,  *no change should go untested!*
 
-## Designing the Model Architecture
+## 모델 아키텍처 설계하기
 
-Now that we have our experimental framework in place, it's time to make the big decisions that will define our model. Every choice we make, from model size to attention mechanisms to tokenizer, creates constraints and opportunities that will affect model training and usage. 
+실험 환경을 갖췄으니, 이제 어떤 모델을 만들지 굵직한 결정을 내릴 차례입니다. 모델 크기부터 어텐션 메커니즘, 토크나이저까지, 선택 하나하나가 제약과 새로운 가능성을 함께 낳고, 모델의 학습과 활용에 영향을 줍니다.
 
-Remember the [training compass](#training-compass-why--what--how): Before making any technical choices, we need clarity on the  *why*  and  *what* . Why are we training this model, and what should it look like?
+[학습 나침반](#training-compass-why--what--how)을 떠올려 봅시다. 기술적인 선택을 하기 전에 '왜'와 '무엇'부터 분명히 해야 합니다. 이 모델을 왜 학습하는지, 그 목적을 이루려면 어떤 모델이 필요한지 말입니다.
 
-It sounds obvious, but as we explained earlier, being deliberate here shapes our decisions and keeps us from getting lost in the endless space of possible experiments. Are we aiming for a SOTA model in English? Is long context a priority? Or are we trying to validate a new architecture? The training loop may look similar in all these cases, but the experiments we run and the trade-offs we accept will be different. Answering these questions early helps us decide how to balance our time between data and architecture work and how much to innovate in each before starting the run. 
+당연한 이야기처럼 들리지만, 앞에서 설명했듯이 이 단계에서 신중하게 생각해 두면 나아갈 방향이 잡히고, 끝없이 많은 실험 후보 속에서 길을 잃지 않게 됩니다. 영어 성능이 최고 수준(SOTA)인 모델이 목표일까요? 긴 컨텍스트 처리를 우선순위에 두어야 할까요? 아니면 새로운 아키텍처를 검증하려는 걸까요? 어느 경우든 학습 루프는 비슷해 보이겠지만, 진행할 실험과 감수할 트레이드오프는 달라집니다. 이 질문들에 일찍 답해 두면, 본 학습을 시작하기 전에 데이터 작업과 아키텍처 작업에 시간을 어떻게 할애할지, 각각에서 얼마나 새로운 시도를 할지 정하는 데 도움이 됩니다.
 
-So, let's lead by example and walk through the goals that guided SmolLM3's design. We wanted a strong model for on-device applications with competitive multilingual performance, solid math and coding capabilities, and robust long context handling. As we mentioned previously, this led us to a dense model with 3B parameters: large enough for strong capabilities but small enough to fit comfortably on phones. We went with a dense transformer rather than MoE or hybrid, given the memory constraints of edge devices and our project timeline (roughly three months).
+그럼 SmolLM3를 예로 들어, 설계의 기준이 된 목표부터 살펴보겠습니다. 온디바이스 애플리케이션에서 쓸 강력한 모델을 만들고자 했습니다. 다국어 성능에서 경쟁력을 갖추고 있고, 수학과 코딩 능력이 탄탄하며, 긴 컨텍스트도 안정적으로 처리할 수 있어야 했습니다. 앞서 말했듯이 이 목표에 따라 3B 파라미터 규모의 밀집 모델(dense model)을 택했습니다. 강력한 성능을 낼 만큼 충분히 크면서도, 스마트폰에 여유 있게 들어갈 만큼 작은 크기입니다. 엣지 디바이스의 메모리 제약과 약 3개월이라는 프로젝트 일정을 고려해, MoE나 하이브리드 모델이 아닌 밀집 트랜스포머를 선택했습니다.
 
-We had a working recipe from SmolLM2 for English at a smaller scale (1.7B parameters), but scaling up meant revalidating everything and tackling new challenges, like multilinguality and extended context length. Having defined goals shaped our approach. For example, in SmolLM2, we struggled to extend the context length at the end of pretraining, so for SmolLM3 we made architectural choices from the start—like using NoPE and intra-document masking (see later)—to maximize our chances of getting it right, and it worked.
+SmolLM2에서 더 작은 규모인 1.7B 파라미터의 영어 모델로 검증한 레시피는 있었습니다. 하지만 규모를 키우려면 모든 것을 다시 검증해야 했고, 다국어 지원과 컨텍스트 길이 확장 같은 새로운 과제도 풀어야 했습니다. 목표가 분명했기에 접근 방식도 그에 맞춰 정할 수 있었습니다. 예를 들어 SmolLM2에서는 사전 학습 막바지에 컨텍스트 길이를 늘리느라 고생했습니다. 그래서 SmolLM3에서는 같은 어려움을 다시 겪지 않도록, 처음부터 아키텍처에 NoPE와 문서 내 마스킹(intra-document masking) 등을 적용했고, 실제로 효과가 있었습니다. 자세한 내용은 뒤에서 다룹니다.
 
 <Sidenote>
 
-SmolLM2 was our previous generation of small language models, with three variants at 135M, 360M, and 1.7B parameters designed for on-device deployment. They were English-only with 8k context length.
+SmolLM2는 이전 세대 소형 언어 모델로, 온디바이스 배포를 위해 설계한 135M, 360M, 1.7B 파라미터의 세 가지 버전이 있습니다. 영어 전용이고 컨텍스트 길이는 8k입니다.
 </Sidenote>
 
-Once our goals are clear, we can start making the technical decisions that will bring them to life. In this chapter, we'll go through our systematic approach to these core decisions: architecture, data, and hyperparameters. Think of this as the strategic planning phase—getting these fundamentals right will save you from costly mistakes during the actual training marathon.
+목표가 분명해졌다면, 이제 그 목표를 실현할 기술적 결정을 내릴 수 있습니다. 이 장에서는 아키텍처, 데이터, 하이퍼파라미터라는 핵심 결정을 어떻게 체계적으로 내렸는지 살펴봅니다. 전략을 세우는 단계라고 생각하면 됩니다. 이 기초를 탄탄히 다져 두면, 실제 학습 마라톤에서 값비싼 실수를 피할 수 있습니다.
 
-### Architecture Choices
+### 아키텍처 선택
 
-If you look at recent models like Qwen3, Gemma 3, or DeepSeek-V3, you'll see that despite their differences, they all share the same foundation: the transformer architecture introduced in 2017 [@transformer]. Its fundamental structure hasn't changed much over the years, but there have been refinements to its core components. Whether you're building a dense model, a mixture of experts model, or a hybrid architecture, you're working with the same building blocks.
+Qwen3, Gemma 3, DeepSeek-V3 같은 최근 모델을 보면, 서로 다른 점이 있어도 모두 같은 토대 위에 서 있습니다. 바로 2017년에 제안된 트랜스포머 아키텍처입니다[@transformer]. 기본 구조는 그동안 크게 바뀌지 않았지만, 핵심 구성 요소는 다듬어져 왔습니다. 밀집 모델이든, 전문가 혼합(MoE) 모델이든, 하이브리드 아키텍처든, 다루는 구성 요소는 같습니다.
 
-The refinements emerged from teams pushing for better performance and tackling specific challenges: memory constraints during inference, training instability at scale, the need to handle longer contexts. Some modifications, like shifting from multi-head attention to more compute-efficient attention variants like grouped query attention [@gqa], have been widely adopted. Others, such as different positional encoding schemes, are still being debated. Eventually, today's experiments will crystallize into tomorrow's baselines.
+이런 개선은 성능을 끌어올리기 위해 구체적인 문제와 씨름한 여러 팀에서 나왔습니다. 추론할 때의 메모리 제약, 대규모 학습의 불안정성, 더 긴 컨텍스트를 처리해야 한다는 요구 같은 문제입니다. 멀티헤드 어텐션에서 그룹 쿼리 어텐션[@gqa] 같은 연산 효율이 더 높은 어텐션 변형으로 옮겨 간 것처럼, 일부 변화는 널리 자리 잡았습니다. 반면 여러 위치 인코딩 방식처럼 아직 논쟁 중인 부분도 있습니다. 결국 오늘의 실험이 내일의 베이스라인으로 굳어질 것입니다.
 
-So what do LLMs actually use today? Let's look at what leading models have converged on. Unfortunately, not all models disclose their training details, but we have enough transparency from families like DeepSeek, OLMo, Kimi, and SmolLM to see the current landscape:
+그렇다면 요즘 LLM은 실제로 무엇을 쓰고 있을까요? 주요 모델의 선택이 어디로 모이고 있는지 살펴보겠습니다. 아쉽게도 모든 모델이 학습 세부 사항을 공개하지는 않지만, DeepSeek, OLMo, Kimi, SmolLM 같은 계열이 공개한 정보만으로도 현황을 파악하기에는 충분합니다.
 
 <Wide>
 
 <Reference id="llms-landscape-pretrain" caption="">
 
-| Model | Architecture | Parameters | Training Tokens | Attention | Context Length (Final) | Positional Encoding | Precision | Init (Std) | Optimizer | Max LR | LR Schedule | Warmup Steps | Batch Size |
+| 모델 | 아키텍처 | 파라미터 | 학습 토큰 | 어텐션 | 컨텍스트 길이(최종) | 위치 인코딩 | 정밀도 | 초기화(표준편차) | 옵티마이저 | 최대 학습률 | 학습률 스케줄 | 워밍업 스텝 | 배치 크기 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| DeepSeek LLM 7B | Dense | 7B | 2T | GQA | 4k | RoPE | BF16 | 0.006 | AdamW | 4.2×10⁻⁴ | Multi-step | 2k | 9.4M |
-| DeepSeek LLM 67B | Dense | 67B | 2T | GQA | 4k | RoPE | BF16 | 0.006 | AdamW | 3.2×10⁻⁴ | Multi-step | 2k | 18.9M |
-| DeepSeek-V2 | MoE | 236B (21B active) | 8.1T | MLA | 128k | Partial RoPE | - | 0.006 | AdamW | 2.4×10⁻⁴ | Multi-step | 2k | 9.4M→37.7M (warmup 225B) |
-| DeepSeek-V3 | MoE | 671B (37B active) | 14.8T | MLA | 128k | Partial RoPE | FP8 | 0.006 | AdamW | 2.2×10⁻⁴ | Multi-step + cosine | 2k | 12.6M→62.9M (warmup 469B) |
-| MiniMax-01 | MoE + hybrid | 456B (45.9 active) | 11.4T | Linear attention + GQA | 4M | Partial RoPE | - | Xavier init with DeepNorm scaling | AdamW | 2×10⁻⁴ | Multi-step | 500 | 16M→32M→64M→128M |
-| Kimi K2 | MoE | 1T (32B active) | 15.5T | MLA | 128k | Partial RoPE | BF16 | Likely 0.006 | MuonClip | 2×10⁻⁴ | WSD | 500 | 67M |
-| OLMo 2 7B | Dense | 7B | 5T | MHA | 4k | RoPE | BF16 | 0.02 | AdamW | 3×10⁻⁴ | Cosine | 2k | 4.2M |
-| SmolLM3 | Dense | 3B | 11T | GQA | 128k | NoPE | BF16 | 0.02 | AdamW | 2×10⁻⁴ | WSD | 2k | 2.3M |
+| DeepSeek LLM 7B | 밀집 | 7B | 2T | GQA | 4k | RoPE | BF16 | 0.006 | AdamW | 4.2×10⁻⁴ | 멀티스텝 | 2k | 9.4M |
+| DeepSeek LLM 67B | 밀집 | 67B | 2T | GQA | 4k | RoPE | BF16 | 0.006 | AdamW | 3.2×10⁻⁴ | 멀티스텝 | 2k | 18.9M |
+| DeepSeek-V2 | MoE | 236B (활성 21B) | 8.1T | MLA | 128k | 부분 RoPE | - | 0.006 | AdamW | 2.4×10⁻⁴ | 멀티스텝 | 2k | 9.4M→37.7M (워밍업 225B) |
+| DeepSeek-V3 | MoE | 671B (활성 37B) | 14.8T | MLA | 128k | 부분 RoPE | FP8 | 0.006 | AdamW | 2.2×10⁻⁴ | 멀티스텝 + 코사인 | 2k | 12.6M→62.9M (워밍업 469B) |
+| MiniMax-01 | MoE + 하이브리드 | 456B (활성 45.9) | 11.4T | 선형 어텐션 + GQA | 4M | 부분 RoPE | - | DeepNorm 스케일링 적용 Xavier 초기화 | AdamW | 2×10⁻⁴ | 멀티스텝 | 500 | 16M→32M→64M→128M |
+| Kimi K2 | MoE | 1T (활성 32B) | 15.5T | MLA | 128k | 부분 RoPE | BF16 | 0.006 (추정) | MuonClip | 2×10⁻⁴ | WSD | 500 | 67M |
+| OLMo 2 7B | 밀집 | 7B | 5T | MHA | 4k | RoPE | BF16 | 0.02 | AdamW | 3×10⁻⁴ | 코사인 | 2k | 4.2M |
+| SmolLM3 | 밀집 | 3B | 11T | GQA | 128k | NoPE | BF16 | 0.02 | AdamW | 2×10⁻⁴ | WSD | 2k | 2.3M |
 </Reference>
 
 </Wide>
 
-If you don't understand some of these terms yet, such as MLA, NoPE, or WSD, don't worry; we'll explain each one in this section. For now, just notice the variety: different attention mechanisms (MHA, GQA, MLA), positional encodings (RoPE, NoPE, partial RoPE), and learning rate schedules (cosine, multi-step, WSD). 
+MLA, NoPE, WSD처럼 아직 낯선 용어가 있어도 걱정할 필요 없습니다. 이 절에서 하나씩 설명하겠습니다. 지금은 선택지가 얼마나 다양한지만 눈여겨보면 됩니다. 어텐션 메커니즘(MHA, GQA, MLA), 위치 인코딩(RoPE, NoPE, 부분 RoPE), 학습률 스케줄(코사인, 멀티스텝, WSD)이 모델마다 제각각입니다.
 
-Looking at this long list of architecture choices, it's a bit overwhelming to even figure out where to start. As in most such situations, we'll take it step by step and gradually build up all the necessary know-how. We'll focus on the simplest base architecture first (a dense model) and investigate each architectural aspect in detail. Later, we'll dive deep into MoE and hybrid models and discuss when using them is a good choice. Finally, we'll explore the tokenizer, an often-overlooked and underrated component. Should we use an existing one or train our own? How do we even evaluate whether our tokenizer is good?
+이렇게 긴 아키텍처 선택지 목록을 보면, 어디서부터 시작해야 할지조차 막막합니다. 이럴 때 흔히 그러듯 한 단계씩 나아가며 필요한 노하우를 차근차근 쌓아 가겠습니다. 먼저 가장 단순한 기본 아키텍처인 밀집 모델에 집중해, 각 요소를 하나씩 자세히 살펴봅니다. 그다음 MoE와 하이브리드 모델을 깊이 파고들어, 어떤 경우에 쓰면 좋은지 논의합니다. 마지막으로, 흔히 간과하고 과소평가하는 구성 요소인 토크나이저를 살펴봅니다. 기존 토크나이저를 쓸까요, 직접 학습할까요? 애초에 토크나이저가 좋은지는 어떻게 평가할까요?
 
-<Note title="Ablation setup" emoji="📍" variant="info">
+<Note title="어블레이션 설정" emoji="📍" variant="info">
 
-Throughout the rest of this chapter, we validate most of the architectural choices through ablations using the setup described in the previoius chapter: our 1B baseline model (following the Llama 3.2 1B architecture) trained on 45B tokens from a mix of FineWeb-Edu, FineMath, and Python-Edu. For each experiment, we show both training loss curves and downstream evaluation scores to assess the impact of each modification. You can find the configs for all the runs in [HuggingFaceTB/training-guide-nanotron-configs](https://huggingface.co/datasets/HuggingFaceTB/training-guide-nanotron-configs/tree/main).
+이 장의 나머지 부분에서는 아키텍처 선택 대부분을 어블레이션(ablation)으로 검증합니다. 설정은 앞 장에서 설명한 그대로입니다. Llama 3.2 1B 아키텍처를 따르는 1B 베이스라인 모델을 FineWeb-Edu, FineMath, Python-Edu를 섞은 데이터 45B 토큰으로 학습합니다. 각 실험에서는 학습 손실 곡선과 다운스트림 평가 점수를 함께 제시해, 수정 사항마다 효과를 따져 봅니다. 모든 실험의 설정 파일은 [HuggingFaceTB/training-guide-nanotron-configs](https://huggingface.co/datasets/HuggingFaceTB/training-guide-nanotron-configs/tree/main)에서 볼 수 있습니다.
 </Note>
 
 <Sidenote>
 
-Sebastian Raschka's ["Big LLM Architecture Comparison"](https://sebastianraschka.com/blog/2025/the-big-llm-architecture-comparison.html) gives a good overview of modern LLM architectures in 2025.
+Sebastian Raschka의 ["Big LLM Architecture Comparison"](https://sebastianraschka.com/blog/2025/the-big-llm-architecture-comparison.html)은 2025년의 최신 LLM 아키텍처를 한눈에 정리한 좋은 글입니다.
 </Sidenote>
 
-We'll begin with the core of every LLM: the attention mechanism.    
+모든 LLM의 핵심인 어텐션 메커니즘부터 시작하겠습니다.
 
-####  **Attention** 
+####  **어텐션**
 
-One of the most active areas of research around transformer architectures is the attention mechanism. While feedforward layers dominate compute during pretraining, attention becomes the main bottleneck at inference (especially with long contexts), where it drives up compute cost and GPU memory requirements, reducing throughput. Let's take a quick tour around the main attention mechanisms and how they trade off capacity and speed.
+어텐션 메커니즘은 트랜스포머 아키텍처 연구에서 가장 활발한 분야로 꼽힙니다. 사전 학습 중에는 피드포워드 레이어가 연산량 대부분을 차지하지만, 추론 단계에서는 어텐션이 주된 병목이 됩니다. 특히 컨텍스트가 길 때 그렇습니다. 어텐션 때문에 연산 비용과 GPU 메모리 요구량이 늘어나고, 그만큼 처리량이 떨어집니다. 주요 어텐션 메커니즘을 빠르게 둘러보며, 각각이 표현력과 속도 사이에서 어떻게 균형을 잡는지 살펴보겠습니다.
 
- **How Many Heads for My Attention?** 
+ **어텐션 헤드는 몇 개가 필요할까?**
 
- *Multi-head attention (MHA)* is the standard attention mechanism introduced with the original transformer architecture [@transformer]. The main idea is that you have  *N*  attention heads each independently doing the same retrieval task: Transform the hidden state into queries, keys, and values, then use the current query to retrieve the most relevant token by match on the keys (K), and finally forward the value (V) associated with the matched tokens. At inference time, we don't need to recompute the KV values for past tokens; we can reuse them. The memory for past KV values is called the  *KV cache* . As context windows grow, this cache can quickly become an inference bottleneck and consume a large share of GPU memory. Here's a simple calculation to estimate the KV cache size $s_{KV}$ for the Llama 3 architecture with MHA and a sequence length of 8,192:
+'멀티헤드 어텐션'(multi-head attention, MHA)은 원조 트랜스포머 아키텍처와 함께 제안된 표준 어텐션 메커니즘입니다[@transformer]. 핵심 아이디어는 *N*개의 어텐션 헤드가 각자 독립적으로 같은 검색 작업을 수행한다는 것입니다. 먼저 은닉 상태를 쿼리(query), 키(key), 값(value)으로 변환합니다. 그다음 현재 쿼리를 키(K)와 맞춰 보며 가장 관련 있는 토큰을 찾고, 마지막으로 찾아낸 토큰에 연결된 값(V)을 전달합니다. 추론할 때는 이전 토큰의 KV 값을 다시 계산할 필요 없이 재사용하면 됩니다. 이렇게 이전 KV 값을 저장해 두는 메모리를 'KV 캐시'라고 합니다. 컨텍스트 윈도우가 커지면 이 캐시가 금세 추론의 병목이 되고, GPU 메모리의 상당 부분을 차지합니다. MHA를 쓰는 Llama 3 아키텍처에서 시퀀스 길이가 8,192일 때, KV 캐시 크기 $s_{KV}$는 다음과 같이 간단히 추정할 수 있습니다.
 
 $$
 \begin{equation} 
@@ -772,25 +772,25 @@ $$
 
 <Sidenote>
 
-Check out [Jay Alamar's famous blog post](https://jalammar.github.io/illustrated-transformer/) for a quick refresher!
+빠르게 복습하고 싶다면 [Jay Alamar의 유명한 블로그 글](https://jalammar.github.io/illustrated-transformer/)을 읽어 보면 좋습니다!
 </Sidenote>
 
-Note that the leading factor of 2 comes from storing both key and value caches. As you can see, the cache size increases linearly with sequence length—but context windows have grown exponentially, now reaching millions of tokens. Improving the efficiency of the cache would make scaling context at inference time much easier. 
+맨 앞의 2는 키 캐시와 값 캐시를 둘 다 저장하기 때문에 붙습니다. 보다시피 캐시 크기는 시퀀스 길이에 비례해 늘어납니다. 그런데 컨텍스트 윈도우는 기하급수적으로 커져서, 이제 수백만 토큰에 이르렀습니다. 캐시 효율을 높이면 추론할 때 컨텍스트를 늘리기가 훨씬 쉬워집니다.
 
-The natural question to ask is: Do we really need new KV values for each head? Probably not, and both  *multi-query attention (MQA)*  [@mqa] and  *grouped query attention (GQA)*  [@gqa] address this. The simplest option is to share the KV values across all heads, thus dividing the size of the KV cache by  $n_{heads}$  (a 64× decrease for Llama 3 70B)! This is the idea of MQA, and it was used in some models, like StarCoder, as an alternative to MHA. However, this approach might give away a bit more attention capacity than we are willing to. Another option is to share the KV values across groups of heads—e.g., we might have four heads sharing the same KV values. This is the GQA approach, which strikes a middle ground between MQA and MHA. 
+자연스럽게 이런 질문이 떠오릅니다. 헤드마다 KV 값이 정말 따로 필요할까요? 아마 아닐 것입니다. '멀티쿼리 어텐션'(multi-query attention, MQA)[@mqa]과 '그룹 쿼리 어텐션'(grouped query attention, GQA)[@gqa]이 바로 이 문제를 다룹니다. 가장 단순한 방법은 모든 헤드가 KV 값을 공유하는 것입니다. 그러면 KV 캐시 크기가 $n_{heads}$분의 1로 줄어듭니다(Llama 3 70B라면 64분의 1입니다)! MQA가 바로 이 아이디어로, StarCoder 같은 일부 모델이 MHA 대신 사용했습니다. 하지만 이렇게 하면 어텐션 표현력이 감수할 만한 수준보다 조금 더 떨어질 수 있습니다. 또 다른 방법은 헤드를 몇 개씩 묶어 그룹 안에서 KV 값을 공유하는 것입니다. 예를 들어 헤드 4개가 같은 KV 값을 함께 쓰는 식입니다. GQA가 바로 이 방식으로, MQA와 MHA 사이의 절충안입니다.
 
-More recently, DeepSeek-V2 introduced  *multi-head latent attention (MLA)* [@deepseekv2], which uses a different strategy to compress the cache (also used in V3): Rather than reducing the number of KV values, it reduces their size and simply stores a latent variable that can be decompressed into KV values at runtime. With this approach, DeepSeek managed to reduce the cache to the equivalent of GQA with 2.25 groups while giving stronger performance than MHA! To make it work with RoPE (Rotary Positional Embedding), a small tweak with an extra small latent vector is needed. For DeepSeek-V2,  $4*dim_{head}$  was chosen for the main latent variable and  $1/2*dim_{head}$  for the RoPE part, for a total of  $4.5*dim_{head}$ . This is used for both K and V simultaneously, thus dropping the leading factor of 2.
+더 최근에는 DeepSeek-V2가 '멀티헤드 잠재 어텐션'(multi-head latent attention, MLA)[@deepseekv2]을 선보였습니다. MLA는 캐시를 압축하는 데 다른 전략을 씁니다(V3에서도 사용했습니다). KV 값의 개수를 줄이는 대신 크기를 줄여서, 실행 중에 KV 값으로 복원할 수 있는 잠재 변수만 저장합니다. 이 방식으로 DeepSeek은 캐시를 그룹이 2.25개인 GQA 수준까지 줄이면서도 MHA보다 더 높은 성능을 냈습니다! MLA를 RoPE(Rotary Positional Embedding)와 함께 쓰려면, 작은 잠재 벡터를 하나 더 두도록 조금 손봐야 합니다. DeepSeek-V2에서는 주 잠재 변수에 $4*dim_{head}$, RoPE 부분에 $1/2*dim_{head}$를 배정해, 합계는 $4.5*dim_{head}$입니다. 이 잠재 변수를 K와 V가 함께 쓰기 때문에, 맨 앞의 2가 사라집니다.
 
 <Sidenote>
 
-RoPE (Rotary Position Embeddings) is a method for encoding positional information by rotating query and key vectors based on their positions in the sequence. It's commonly used in today's LLMs; we'll dicuss it further when we look at positional encodings later in this chapter.
+RoPE(Rotary Position Embeddings)는 시퀀스 안의 위치에 따라 쿼리 벡터와 키 벡터를 회전시켜 위치 정보를 인코딩하는 방법입니다. 오늘날 LLM이 흔히 쓰는 방식이며, 이 장 뒷부분에서 위치 인코딩을 살펴볼 때 더 자세히 다룹니다.
 </Sidenote>
 
-You can see a visual explanation of each attention mechanism in the following graphic:
+각 어텐션 메커니즘을 그림으로 보면 다음과 같습니다.
 
 <Wide>
 
-<Reference caption="A simplified illustration of multi-head attention (MHA), grouped query attention (GQA), multi-query attention (MQA), and multi-head latent attention (MLA). Through jointly compressing the keys and values into a latent vector, MLA significantly reduces the KV cache size during inference.">
+<Reference caption="멀티헤드 어텐션(MHA), 그룹 쿼리 어텐션(GQA), 멀티쿼리 어텐션(MQA), 멀티헤드 잠재 어텐션(MLA)을 단순화한 그림입니다. MLA는 키와 값을 함께 잠재 벡터로 압축해, 추론 시 KV 캐시 크기를 크게 줄입니다.">
 
 <HtmlEmbed src="embeds/attention-mechanisms.html"/>
 </Reference>
@@ -799,40 +799,40 @@ You can see a visual explanation of each attention mechanism in the following gr
 
 
 
-The following table compares the attention mechanisms discussed in this section. For simplicity, we compare the parameters used per token; if you want to compute total memory, simply multiply by bytes per parameter (typically 2) and sequence length.
+다음 표는 이 절에서 다룬 어텐션 메커니즘을 비교한 것입니다. 단순하게 보기 위해 토큰당 사용하는 파라미터 수를 비교했습니다. 전체 메모리를 계산하려면 파라미터당 바이트 수(보통 2)와 시퀀스 길이를 곱하면 됩니다.
 
-| Attention Mechanism | KV Cache Parameters per Token |
+| 어텐션 메커니즘 | 토큰당 KV 캐시 파라미터 수 |
 | --- | --- |
 | MHA | $= 2 \times n_{heads} \times n_{layers} \times dim_{head}$ |
 | MQA | $= 2 \times 1 \times n_{layers} \times dim_{head}$ |
 | GQA | $= 2 \times g \times n_{layers} \times dim_{head} \text { (typically g=2,4,8 )}$ |
 | MLA | $= 4.5 \times n_{layers} \times dim_{head}$ |
 
-Now let's see how these attention mechanisms fare in real experiments!
+이제 이 어텐션 메커니즘이 실제 실험에서 어떤 성적을 내는지 확인해 봅시다!
 
- **Ablation—GQA Beats MHA** 
+ **어블레이션: GQA가 MHA를 이긴다**
 
-Our [baseline](https://huggingface.co/datasets/HuggingFaceTB/ablations-training-configs/blob/main/baseline_config_1B.yaml) model uses 32 query heads and 8 KV heads, which corresponds to GQA with ratio 32 / 8 = 4. How would performance change if we used MHA, or if we went with fewer KV heads and a higher GQA ratio?
+[베이스라인](https://huggingface.co/datasets/HuggingFaceTB/ablations-training-configs/blob/main/baseline_config_1B.yaml) 모델은 쿼리 헤드 32개와 KV 헤드 8개를 사용합니다. 비율로 따지면 32 / 8 = 4인 GQA입니다. MHA를 쓰거나, KV 헤드를 더 줄여 GQA 비율을 높이면 성능이 어떻게 달라질까요?
 
 <Sidenote>
 
-Some libraries call this the GQA ratio: Query groups = Query heads / KV heads.
+일부 라이브러리에서는 이 값을 GQA 비율이라고 부릅니다. 쿼리 그룹 수 = 쿼리 헤드 수 / KV 헤드 수입니다.
 </Sidenote>
 
-Changing the number of KV heads affects parameter count, especially for the MHA case. For consistency, we adjust the number of layers for the MHA run, since it would otherwise have a 100M+ parameter discrepancy; for the rest, we keep the default 16 layers. We'll compare MHA, MQA, and four setups for GQA (ratios 2, 4, 8, 16). You can find the Nanotron configs [here](https://huggingface.co/datasets/HuggingFaceTB/training-guide-nanotron-configs/tree/main/attention).
+KV 헤드 수를 바꾸면 파라미터 수가 달라지는데, 특히 MHA에서 차이가 큽니다. 그대로 두면 MHA 실험만 파라미터가 100M 넘게 많아지므로, 일관된 비교를 위해 MHA 실험은 레이어 수를 조정했습니다. 나머지는 기본값인 레이어 16개를 그대로 씁니다. MHA, MQA, 그리고 비율이 2, 4, 8, 16인 GQA 네 가지 설정을 비교합니다. Nanotron 설정 파일은 [여기](https://huggingface.co/datasets/HuggingFaceTB/training-guide-nanotron-configs/tree/main/attention)에서 볼 수 있습니다.
 
-| Attention Type | Query Heads | KV Heads | Layers | Parameter Count | Notes |
+| 어텐션 유형 | 쿼리 헤드 | KV 헤드 | 레이어 | 파라미터 수 | 비고 |
 | --- | --- | --- | --- | --- | --- |
 | MQA | 32 | 1 | 16 | 1.21B |
-| GQA (ratio 16) | 32 | 2 | 16 | 1.21B |
-| GQA (ratio 8) | 32 | 4 | 16 | 1.22B | **Our baseline** |
-| GQA (ratio 4) | 32 | 8 | 16 | 1.24B |
-| GQA (ratio 2) | 32 | 16 | 15 | 1.22B | Reduced layers |
-| MHA | 32 | 32 | 14 | 1.20B | Reduced layers |
-| GQA (ratio 2) | 32 | 16 | 16 | 1.27B | Too large—not ablated |
-| MHA | 32 | 32 | 16 | 1.34B | Too large—not ablated |
+| GQA (비율 16) | 32 | 2 | 16 | 1.21B |
+| GQA (비율 8) | 32 | 4 | 16 | 1.22B | **베이스라인** |
+| GQA (비율 4) | 32 | 8 | 16 | 1.24B |
+| GQA (비율 2) | 32 | 16 | 15 | 1.22B | 레이어 축소 |
+| MHA | 32 | 32 | 14 | 1.20B | 레이어 축소 |
+| GQA (비율 2) | 32 | 16 | 16 | 1.27B | 너무 커서 어블레이션 제외 |
+| MHA | 32 | 32 | 16 | 1.34B | 너무 커서 어블레이션 제외 |
 
-Looking at the ablation results, we find that MQA and GQA with 16 groups (using only 1 and 2 KV heads, respectively) underperform MHA significantly. On the other hand, GQA configurations with 2, 4, and 8 groups roughly match MHA performance:
+어블레이션 결과를 보면, KV 헤드를 각각 1개와 2개만 쓰는 MQA와 16그룹 GQA는 MHA보다 성능이 확연히 떨어집니다. 반면 2, 4, 8그룹 GQA는 MHA와 거의 비슷한 성능을 냅니다.
 
 <HtmlEmbed
 src="embeds/d3-line-chart.html"
@@ -841,7 +841,7 @@ dataUrl: "./data/attention_loss.csv",
 xDomain: [0, 45e9],
 yDomain: [2.1, 2.7],
 smoothing: true,
-title: "Attention Loss"
+title: "어텐션 손실"
 }}
 />
 
@@ -867,24 +867,24 @@ smoothingWindow: 15
 
 
 
-The results are consistent across both loss curves and downstream evaluations. We observe this clearly in benchmarks like HellaSwag, MMLU, and ARC, while benchmarks like OpenBookQA and WinoGrande show a bit of noise.
+손실 곡선과 다운스트림 평가 모두 결과가 일관됩니다. HellaSwag, MMLU, ARC 같은 벤치마크에서는 이 경향이 뚜렷하게 보이고, OpenBookQA와 WinoGrande에서는 노이즈가 조금 있습니다.
 
-Based on these ablations, GQA is a solid alternative to MHA. It preserves performance while being more efficient at inference. Some recent models have adopted MLA for even greater KV cache compression, though it hasn't been as widely adopted yet. We didn't ablate MLA, since it wasn't implemented in Nanotron at the time of the ablations. For SmolLM3, we used GQA with 4 groups.
+이 어블레이션 결과로 보면 GQA는 MHA를 대신할 탄탄한 선택지입니다. 성능은 그대로 유지하면서 추론 효율은 더 높습니다. 최근 일부 모델은 KV 캐시를 더 많이 압축하기 위해 MLA를 채택했지만, 아직 GQA만큼 널리 쓰이지는 않습니다. MLA는 어블레이션 당시 Nanotron에 구현이 없어 실험하지 않았습니다. SmolLM3에는 4그룹 GQA를 사용했습니다.
 
-Beyond the attention architecture itself, the attention pattern we use during training also matters. Let's take a look.
+어텐션 구조 자체 말고도, 학습 중에 어떤 어텐션 패턴을 쓰는지도 중요합니다. 함께 살펴보겠습니다.
 
- **Document Masking** 
+ **문서 마스킹**
 
-How we apply attention across our training sequences impacts both computational efficiency and model performance. This brings us to  *document masking*  and the broader question of how we structure our training samples in the dataloader.
+학습 시퀀스에 어텐션을 어떻게 적용하느냐는 연산 효율과 모델 성능 모두에 영향을 줍니다. 이 이야기는 '문서 마스킹'으로, 더 넓게는 데이터로더에서 학습 샘플을 어떻게 구성할지로 이어집니다.
 
-During pretraining, we train with fixed sequence lengths, but our documents have variable lengths. A research paper might have 10k tokens, while a short code snippet might only have a few hundred. How do we fit variable-length documents into fixed-length training sequences? Padding shorter documents to reach our target length wastes compute on meaningless padding tokens. Instead, we use  *packing* : We shuffle and concatenate documents with end-of-sequence (EOS) tokens, then split the result into fixed-length chunks matching the sequence size.
+사전 학습은 고정된 시퀀스 길이로 진행하지만, 문서의 길이는 제각각입니다. 연구 논문은 10k 토큰에 이를 수 있지만, 짧은 코드 조각은 수백 토큰에 불과할 수 있습니다. 길이가 다른 문서를 어떻게 고정 길이의 학습 시퀀스에 맞춰 넣을까요? 짧은 문서에 패딩을 채워 목표 길이를 맞추면, 의미 없는 패딩 토큰에 연산 자원을 낭비하게 됩니다. 대신 '패킹'을 사용합니다. 문서를 섞은 뒤 시퀀스 종료(end-of-sequence, EOS) 토큰을 사이에 두고 이어 붙이고, 그 결과를 시퀀스 크기에 맞는 고정 길이 청크로 자릅니다.
 
 <Sidenote>
 
-Another option is to add beginning-of-sequence (BOS) tokens at the start of documents. In this case, you'll notice a different `bos_token_id` present in the model/tokenizer configs.
+문서 시작 부분에 시퀀스 시작(beginning-of-sequence, BOS) 토큰을 넣는 방법도 있습니다. 이 경우 모델/토크나이저 설정에 별도의 `bos_token_id`가 들어 있는 것을 볼 수 있습니다.
 </Sidenote>
 
-Here's what this looks like in practice:
+실제로는 다음과 같은 모습입니다.
 
 ```markdown
 File 1: "Recipe for granola bars..." (400 tokens) <EOS>
@@ -897,24 +897,24 @@ After concatenation and chunking into 4k sequences:
 Sequence 1: [File 1] + [File 2] + [File 3] + [partial File 4]
 Sequence 2: [rest of File 4] + [File 5] + [File 6] + ...
 ```
-A training sequence might contain one complete file if it's long enough to fill our 4k context, but most files are shorter than that, so sequences generally contain concatenations of multiple random files.
+파일 하나가 4k 컨텍스트를 채울 만큼 길다면, 학습 시퀀스 하나에 그 파일만 온전히 들어갈 수도 있습니다. 하지만 파일 대부분은 그보다 짧기 때문에, 시퀀스에는 보통 무작위로 고른 여러 파일이 이어 붙어 있습니다.
 
-With standard causal masking, tokens can attend to all previous tokens in the packed sequence. In the example above, a token in the Python script of file 4 can attend to the granola bars recipe, the function definition, and the climate change article. 
+표준 인과 마스킹(causal masking)에서는 토큰이 패킹된 시퀀스 안의 이전 토큰을 모두 참조할 수 있습니다. 위 예시라면 파일 4의 파이썬 스크립트에 속한 토큰이 그래놀라 바 레시피, 함수 정의, 기후 변화 기사까지 참조할 수 있다는 뜻입니다.
 
-Let's take a look at what a typical 4k pretraining context would contain. A quick[ analysis](https://www.harmdevries.com/post/context-length/) reveals that a substantial portion (about 80–90%) of files in the Common Crawl and GitHub datasets are shorter than 2k tokens. The following chart examines token distributions for the more recent datasets used throughout this guide:
+일반적인 4k 사전 학습 컨텍스트에 무엇이 담기는지 살펴보겠습니다. 간단한 [분석](https://www.harmdevries.com/post/context-length/) 결과, Common Crawl과 GitHub 데이터셋 파일의 상당수(약 80-90%)가 2k 토큰보다 짧습니다. 다음 차트는 이 가이드 전반에서 사용하는 최신 데이터셋의 토큰 분포를 보여 줍니다.
 
 <HtmlEmbed src="embeds/token-distribution.html"/>
 
 
 
-More than 80% of documents in FineWeb-Edu, DCLM, FineMath, and Python-Edu also contain fewer than 2k tokens. This means with a 2k or 4k training sequence and standard causal masking, the vast majority of tokens would spend compute attending to unrelated documents packed together.
+FineWeb-Edu, DCLM, FineMath, Python-Edu에서도 문서의 80% 이상이 2k 토큰 미만입니다. 즉 학습 시퀀스가 2k나 4k이고 표준 인과 마스킹을 쓴다면, 토큰 대부분이 함께 패킹된 무관한 문서를 참조하는 데 연산 자원을 쓰게 됩니다.
 
-<Note title="Longer documents in PDFs" variant="info">
+<Note title="PDF에 담긴 더 긴 문서" variant="info">
 
-While most web-based datasets consist of short documents, PDF-based datasets contain substantially longer content. [FinePDFs](https://huggingface.co/datasets/HuggingFaceFW/fineweb-2) documents are on average 2× longer than web text, and mixing them with FineWeb-Edu and DCLM documents improves performance.
+웹 기반 데이터셋은 대부분 짧은 문서로 이루어져 있지만, PDF 기반 데이터셋에는 훨씬 긴 글이 담겨 있습니다. [FinePDFs](https://huggingface.co/datasets/HuggingFaceFW/fineweb-2) 문서는 평균적으로 웹 텍스트보다 2배 길며, FineWeb-Edu, DCLM 문서와 섞으면 성능이 좋아집니다.
 </Note>
 
-Besides the issue of computational inefficiency, @zhao2024 find that this approach introduces noise from unrelated content that can degrade performance. They suggest using  *intra-document masking* , where we modify the attention mask so tokens can only attend to previous tokens within the same document. The following visualization illustrates the difference.
+연산 비효율 문제 말고도, @zhao2024 연구에 따르면 이 방식에서는 무관한 내용이 노이즈로 섞여 들어와 성능이 떨어질 수 있습니다. 그래서 이들은 '문서 내 마스킹'을 제안합니다. 어텐션 마스크를 수정해, 토큰이 같은 문서 안의 이전 토큰만 참조하도록 하는 방법입니다. 다음 시각화가 그 차이를 보여 줍니다.
 
 <Wide>
 
@@ -923,20 +923,20 @@ Besides the issue of computational inefficiency, @zhao2024 find that this approa
 
 
 
-@skyladder found similar benefits from intra-document masking in SkyLadder, but they offer a different explanation: They found that shorter context lengths work better for training, and intra-document masking effectively reduces the average context length. 
+@skyladder 연구진도 SkyLadder에서 문서 내 마스킹의 비슷한 이점을 확인했지만, 설명은 다릅니다. 이들에 따르면 학습에는 짧은 컨텍스트 길이가 더 효과적인데, 문서 내 마스킹이 평균 컨텍스트 길이를 사실상 줄여 준다는 것입니다.
 
 <Wide>
 
-<Reference caption="These plots from SkyLadder demonstrate multiple findings: (a) shorter contexts often perform better during pretraining (lower validation perplexity), (b) intra-document masking (IntraDoc) achieves lower perplexity than both random packing (Random) and semantic grouping (BM25), (c) the shorter context advantage holds even without positional encoding, and (d) IntraDoc creates a distribution skewed toward shorter effective context lengths.">
+<Reference caption="SkyLadder의 이 그래프는 여러 결과를 보여 줍니다. (a) 사전 학습에서는 짧은 컨텍스트가 더 좋은 성능을 내는 경우가 많습니다(검증 퍼플렉서티가 더 낮음). (b) 문서 내 마스킹(IntraDoc)은 무작위 패킹(Random)과 의미 기반 그룹화(BM25)보다 퍼플렉서티가 낮습니다. (c) 짧은 컨텍스트의 이점은 위치 인코딩이 없어도 유지됩니다. (d) IntraDoc을 쓰면 실질 컨텍스트 길이의 분포가 짧은 쪽으로 치우칩니다.">
 
-<Image src={image_27c1384e_bcac_807c_807b_fac08be1d884} alt="Image" />
+<Image src={image_27c1384e_bcac_807c_807b_fac08be1d884} alt="이미지" />
 </Reference>
 
 </Wide>
 
-Meta also trained Llama 3 [@llama3] with intra-document masking; they found limited impact during short context pretraining but significant benefits for long context extension, where the attention overhead becomes more significant. In addition, the ProLong paper [@prolong] showed that using document masking to extend Llama 3 8B's context in continual pretraining benefits both long context and short context benchmarks. 
+Meta도 Llama 3[@llama3]를 문서 내 마스킹으로 학습했습니다. 짧은 컨텍스트로 사전 학습할 때는 효과가 크지 않았지만, 어텐션 부담이 더 커지는 긴 컨텍스트 확장 단계에서는 이점이 컸다고 합니다. 또한 ProLong 논문[@prolong]은 지속 사전 학습(continual pretraining)으로 Llama 3 8B의 컨텍스트를 늘릴 때 문서 마스킹을 쓰면, 긴 컨텍스트와 짧은 컨텍스트 벤치마크 모두에 도움이 된다고 밝혔습니다.
 
-We decided to run an ablation on our 1B baseline model and test whether document masking impacted short context performance. You can find the config [here](https://huggingface.co/datasets/HuggingFaceTB/training-guide-nanotron-configs/blob/main/doc_masking/doc_masking.yaml). To enable document masking in Nanotron, simply set the  `_use_doc_masking`  flag to  `true` :
+1B 베이스라인 모델로 어블레이션을 진행해, 문서 마스킹이 짧은 컨텍스트 성능에 영향을 주는지 확인하기로 했습니다. 설정 파일은 [여기](https://huggingface.co/datasets/HuggingFaceTB/training-guide-nanotron-configs/blob/main/doc_masking/doc_masking.yaml)에서 볼 수 있습니다. Nanotron에서 문서 마스킹을 켜려면 `_use_doc_masking` 플래그를 `true`로 설정하기만 하면 됩니다.
 
 ```diff
 model_config:
@@ -947,7 +947,7 @@ model_config:
 + _use_doc_masking: true
 
 ```
-The results showed identical loss curves and downstream evaluation scores compared to standard causal masking, as shown in the following charts. 
+다음 차트에서 보듯이, 손실 곡선과 다운스트림 평가 점수 모두 표준 인과 마스킹을 썼을 때와 똑같았습니다.
 
 <HtmlEmbed
 src="embeds/d3-line-chart.html"
@@ -956,7 +956,7 @@ dataUrl: "./data/doc-masking_loss.csv",
 xDomain: [0, 45e9],
 yDomain: [2.1, 2.7],
 smoothing: true,
-title: "Doc Masking Loss"
+title: "문서 마스킹 손실"
 }}
 />
 
@@ -982,31 +982,31 @@ smoothingWindow: 15
 
 
 
-As with Llama 3, we don't observe a noticeable impact on short context tasks, except for a small improvement on PIQA. However, document masking becomes crucial when scaling to long sequences to speed up the training. This is particularly important for our long context extension, where we scale from 4k to 64k tokens (as detailed in ["The Training Marathon"](#the-training-marathon)). We therefore adopted it for SmolLM3 throughout the full training run.
+Llama 3 때와 마찬가지로, PIQA에서 약간 좋아진 것을 빼면 짧은 컨텍스트 작업에서는 눈에 띄는 영향이 없었습니다. 하지만 긴 시퀀스로 규모를 키울 때는 학습 속도를 높이는 데 문서 마스킹이 결정적인 역할을 합니다. 4k에서 64k 토큰까지 늘리는 긴 컨텍스트 확장 단계에서는 특히 중요합니다. 그래서 SmolLM3에서는 전체 학습 내내 문서 마스킹을 적용했습니다. 자세한 내용은 ["학습 마라톤(The Training Marathon)"](#the-training-marathon) 장에서 다룹니다.
 
-In this section, we've covered how attention processes sequences. Now let's look at another major parameter block in transformers: the embeddings.
+지금까지 어텐션이 시퀀스를 어떻게 처리하는지 살펴봤습니다. 이제 트랜스포머의 또 다른 주요 파라미터 블록인 임베딩으로 넘어가겠습니다.
 
-####  **Embedding Sharing** 
+####  **임베딩 공유**
 
-If you look at the [config](https://huggingface.co/datasets/HuggingFaceTB/training-guide-nanotron-configs/blob/main/baseline_config_1B.yaml) of our baseline ablation model, one thing that's different from a standard transformer is embedding sharing, enabled by the flag  `tie_word_embeddings` . 
+베이스라인 어블레이션 모델의 [설정 파일](https://huggingface.co/datasets/HuggingFaceTB/training-guide-nanotron-configs/blob/main/baseline_config_1B.yaml)을 보면, 표준 트랜스포머와 다른 점이 하나 있습니다. 바로 `tie_word_embeddings` 플래그로 켜는 임베딩 공유입니다.
 
-LLMs have two embedding components: the input embeddings, which serve as a token-to-vector lookup table (of size  *vocab_size*  ×  *hidden_dim* ), and the output embeddings, which are the final linear layer mapping hidden states to vocabulary logits ( *hidden_dim*  ×  *vocab_size* ). In the classic case where these are separate matrices, there are a total of 2 ×  *vocab_size*  ×  *hidden_dim*  embedding parameters. Therefore, in small language models, embeddings can constitute a large portion of the total parameter count, especially if the vocabulary size is large. This makes embedding sharing (reusing input embeddings in the output) a natural optimization for small models. 
+LLM에는 임베딩 구성 요소가 두 개 있습니다. 하나는 입력 임베딩으로, 토큰을 벡터로 바꿔 주는 룩업 테이블 역할을 합니다(크기 *vocab_size* × *hidden_dim*). 다른 하나는 출력 임베딩으로, 은닉 상태를 어휘별 로짓으로 바꾸는 마지막 선형 레이어입니다(크기 *hidden_dim* × *vocab_size*). 고전적인 방식처럼 두 행렬을 따로 두면, 임베딩 파라미터는 모두 2 × *vocab_size* × *hidden_dim*개가 됩니다. 그래서 작은 언어 모델에서는 임베딩이 전체 파라미터의 큰 몫을 차지할 수 있고, 어휘 크기가 크면 더욱 그렇습니다. 이런 이유로 작은 모델에서는 임베딩 공유, 즉 입력 임베딩을 출력에서도 다시 쓰는 방식이 자연스러운 최적화가 됩니다.
 
 <HtmlEmbed src="/embeds/embedding-calculator.html" />
 
 
 
-Larger models don't typically use this technique, since embeddings represent a smaller fraction of their parameter budget. For example, total embeddings without sharing account for only 13% of the parameters in Llama 3.2 8B and 3% in Llama 3.1 70B, as shown in the following pie chart.
+큰 모델은 보통 이 기법을 쓰지 않습니다. 전체 파라미터 예산에서 임베딩이 차지하는 비중이 작기 때문입니다. 예를 들어 다음 원형 차트에서 보듯이, 공유하지 않은 임베딩 전체가 Llama 3.2 8B에서는 파라미터의 13%, Llama 3.1 70B에서는 3%에 불과합니다.
 
 <HtmlEmbed src="/embeds/parameter-comparison.html" />
 
 
 
- **Ablation—Models with Tied Embeddings Match Larger Untied Variants** 
+ **어블레이션: 임베딩을 공유한 모델이 더 큰 비공유 모델과 대등하다**
 
-Let's assess the impact of embedding sharing on our ablation model. We'll draw insights from [MobileLLM's](https://arxiv.org/abs/2402.14905) comprehensive ablations on this technique at 125M scale, which demonstrated that sharing reduced the number of parameters by 11.8% with minimal accuracy degradation.
+임베딩 공유가 어블레이션 모델에 어떤 영향을 주는지 평가해 보겠습니다. 참고할 만한 것은 [MobileLLM](https://arxiv.org/abs/2402.14905)이 125M 규모에서 이 기법을 폭넓게 어블레이션한 결과입니다. 이 연구에서는 임베딩을 공유하자 정확도는 거의 떨어지지 않으면서 파라미터 수가 11.8% 줄었습니다.
 
-Since untied embeddings increase our parameter count from 1.2B to 1.46B, we will train another model with untied embeddings but fewer layers so it matches the baseline 1.2B model in parameter count. We'll then compare the two 1.2B models—our baseline with tied embeddings (16 layers) and an untied version with 12 layers—with the 1.46B model with untied embeddings and the same layer count as our baseline as an additional reference point. You can find the Nanotron configs [here](https://huggingface.co/datasets/HuggingFaceTB/training-guide-nanotron-configs/blob/main/baseline_config_1B.yaml).
+임베딩을 공유하지 않으면 파라미터 수가 1.2B에서 1.46B로 늘어납니다. 그래서 비공유 임베딩을 쓰되 레이어 수를 줄여, 파라미터 수를 1.2B 베이스라인과 맞춘 모델을 하나 더 학습합니다. 그런 다음 1.2B 모델 두 개, 즉 공유 임베딩을 쓰는 베이스라인(레이어 16개)과 레이어가 12개인 비공유 버전을 비교합니다. 추가 기준점으로, 베이스라인과 레이어 수는 같고 임베딩만 공유하지 않는 1.46B 모델도 함께 비교합니다. Nanotron 설정 파일은 [여기](https://huggingface.co/datasets/HuggingFaceTB/training-guide-nanotron-configs/blob/main/baseline_config_1B.yaml)에서 볼 수 있습니다.
 
 <HtmlEmbed
 src="embeds/d3-line-chart.html"
@@ -1015,7 +1015,7 @@ dataUrl: "./data/tied-embeddings_loss.csv",
 xDomain: [0, 45e9],
 yDomain: [2.1, 2.7],
 smoothing: true,
-title: "Tied Embeddings Loss"
+title: "공유 임베딩 손실"
 }}
 />
 
@@ -1041,41 +1041,41 @@ smoothingWindow: 5
 
 
 
-The loss and evaluation results demonstrate that our baseline 1.2B model with tied embeddings achieves comparable performance to the 1.46B untied equivalent on all the benchmarks except for WinoGrande, despite having 18% fewer parameters. The 1.2B model with untied embeddings and reduced layers (12 vs. 16) underperforms both configurations, exhibiting higher loss and lower downstream evaluation scores. This suggests that increasing model depth provides greater benefits than untying embeddings at equivalent parameter budgets.
+손실과 평가 결과를 보면, 임베딩을 공유한 1.2B 베이스라인 모델은 파라미터가 18% 적은데도 WinoGrande를 제외한 모든 벤치마크에서 1.46B 비공유 모델과 비슷한 성능을 냅니다. 임베딩을 공유하지 않고 레이어를 16개에서 12개로 줄인 1.2B 모델은 두 설정 모두에 뒤처져, 손실은 더 높고 다운스트림 평가 점수는 더 낮습니다. 같은 파라미터 예산이라면 임베딩 공유를 푸는 것보다 모델 깊이를 늘리는 편이 더 이득이라고 볼 수 있습니다.
 
-Based on these results, we kept tied embeddings for our SmolLM3-3B model.
+이 결과를 바탕으로 SmolLM3-3B 모델에서도 공유 임베딩을 유지했습니다.
 
-Embeddings alone don't capture the order of tokens in a sequence, however; providing this information is the role of positional encodings. In the next section, we will look at how positional encoding strategies have evolved, from standard RoPE to newer approaches like NoPE (No Positional Embedding) that enable more effective modeling for long contexts.
+하지만 임베딩만으로는 시퀀스 안에서 토큰의 순서를 담아낼 수 없습니다. 순서 정보를 제공하는 것은 위치 인코딩의 몫입니다. 다음 절에서는 표준 RoPE부터 긴 컨텍스트를 더 효과적으로 다룰 수 있는 NoPE(No Positional Embedding) 같은 새로운 방식까지, 위치 인코딩 전략이 어떻게 발전해 왔는지 살펴보겠습니다.
 
-####  **Positional Encoding and Long Context** 
+####  **위치 인코딩과 긴 컨텍스트**
 
-When transformers process text, they face a fundamental challenge: They naturally have no sense of word order, since they consume entire sequences simultaneously through parallel attention operations. This enables efficient training but creates a problem. Without explicit position information, "Adam beats Muon" looks similar to "Muon beats Adam" from the model's perspective.
+트랜스포머는 텍스트를 처리할 때 근본적인 어려움에 부딪힙니다. 병렬 어텐션 연산으로 시퀀스 전체를 한꺼번에 받아들이기 때문에, 본래 단어의 순서를 알지 못합니다. 덕분에 학습은 효율적이지만 문제가 생깁니다. 명시적인 위치 정보가 없으면, 모델 입장에서는 "Adam이 Muon을 이긴다"와 "Muon이 Adam을 이긴다"가 비슷해 보입니다.
 
-The solution is  *positional embeddings* : mathematical encodings that give each token a unique "address" in the sequence. But as we push toward longer and longer contexts—from the 512 tokens of early BERT to today's multi-million-token models—the choice of positional encoding becomes increasingly critical for both performance and computational efficiency.
+해결책은 '위치 임베딩'입니다. 각 토큰에 시퀀스 안의 고유한 "주소"를 붙여 주는 수학적 인코딩입니다. 하지만 초기 BERT의 512토큰에서 오늘날 수백만 토큰을 다루는 모델까지 컨텍스트가 점점 길어지면서, 어떤 위치 인코딩을 고르느냐가 성능과 연산 효율 모두에 갈수록 중요해지고 있습니다.
 
- **The Evolution of Positional Encoding** 
+ **위치 인코딩의 발전**
 
-Early transformers used simple  *absolute positional embeddings* , essentially learned lookup tables that mapped each position (1, 2, 3...) to a vector that got added to token embeddings **** [@transformer]. This worked fine for short sequences but had a major limitation: Models' max input sequence lengths were limited to the max input sequence lengths they were trained on. They had no out-of-the-box capability to generalize to longer sequences.
+초기 트랜스포머는 단순한 '절대 위치 임베딩'을 썼습니다. 각 위치(1, 2, 3...)를 벡터에 대응시키는, 학습으로 얻은 룩업 테이블이라고 보면 됩니다. 이 벡터를 토큰 임베딩에 더해서 사용했습니다[@transformer]. 짧은 시퀀스에서는 잘 작동했지만 큰 한계가 있었습니다. 모델이 받을 수 있는 최대 입력 길이가 학습 때 본 최대 입력 길이로 묶여 버린다는 점입니다. 그보다 긴 시퀀스로 일반화하는 능력이 기본적으로 없었습니다.
 
-The field thus evolved toward  *relative positional embeddings*  that capture the distance between tokens rather than their absolute positions. This makes intuitive sense: whether two words are 3 positions apart matters more than whether they're at positions (5,8) versus (105,108). 
+그래서 이 분야는 토큰의 절대 위치 대신 토큰 사이의 거리를 포착하는 '상대 위치 임베딩' 쪽으로 발전했습니다. 직관적으로도 납득이 갑니다. 두 단어가 (5,8)에 있는지 (105,108)에 있는지보다, 둘이 세 칸 떨어져 있다는 점이 더 중요하기 때문입니다.
 
 <Sidenote>
 
-For a deeper dive into positional encoding, [this blog](https://huggingface.co/blog/designing-positional-encoding) walks through the step-by-step development from basic positioning to rotational encoding.
+위치 인코딩을 더 깊이 다룬 [이 블로그 글](https://huggingface.co/blog/designing-positional-encoding)은 기본적인 위치 표현부터 회전 인코딩까지 발전 과정을 단계별로 설명합니다.
 </Sidenote>
 
-ALiBi (Attention with Linear Biases) [@alibi], in particular, modifies the attention scores based on token distance. The further apart two tokens are, the more their attention gets penalized through simple linear biases applied to attention weights. You can find a detailed implementation of ALiBi on [labml.ai](http://labml.aihttps//nn.labml.ai/transformers/alibi/index.html).
+그중 ALiBi(Attention with Linear Biases)[@alibi]는 토큰 사이의 거리에 따라 어텐션 점수를 조정합니다. 두 토큰이 멀리 떨어져 있을수록, 어텐션 가중치에 적용하는 단순한 선형 편향 때문에 어텐션이 더 많이 깎입니다. ALiBi의 자세한 구현은 [labml.ai](http://labml.aihttps//nn.labml.ai/transformers/alibi/index.html)에서 볼 수 있습니다.
 
-The technique that has dominated recent large language models, however, is RoPE [@rope].
+하지만 최근 대규모 언어 모델을 휩쓴 기법은 회전 위치 임베딩(Rotary Positional Embedding, RoPE)[@rope]입니다.
 
- **RoPE: Position as Rotation** 
+ **RoPE: 위치를 회전으로 표현하기**
 
-RoPE's core insight is to encode position information as rotation angles in a high-dimensional space. Instead of adding position vectors to token embeddings, RoPE rotates the query and key vectors by angles that depend on their absolute positions.
+RoPE의 핵심 아이디어는 위치 정보를 고차원 공간의 회전각으로 인코딩하는 것입니다. RoPE는 토큰 임베딩에 위치 벡터를 더하는 대신, 쿼리 벡터와 키 벡터를 각 토큰의 절대 위치에 따라 정해지는 각도만큼 회전시킵니다.
 
-The intuition is that we treat each pair of dimensions in our embeddings as coordinates on a circle and rotate them by an angle determined by:
+직관적으로 설명하면, 임베딩의 차원을 두 개씩 짝지어 원 위의 좌표로 보고, 다음 두 가지로 정해지는 각도만큼 회전시키는 것입니다.
 
-- The token's position in the sequence
-- Which dimension pair we're working with (different pairs rotate at different frequencies, which are exponents of a base/reference frequency)
+- 시퀀스 안에서 토큰의 위치
+- 지금 다루는 차원 쌍이 몇 번째인지(쌍마다 회전하는 주파수가 다르며, 이 주파수는 기본 주파수의 거듭제곱으로 정해집니다)
 
 ```python
 import torch
@@ -1128,7 +1128,7 @@ K_rope = torch.stack([apply_rope(K[0,0,p], p) for p in range(K.size(2))])
 scores = (Q_rope @ K_rope.T) / math.sqrt(Q.size(-1))
 attn_weights = torch.softmax(scores, dim=-1)
 ```
-This code might seem complex, so let's break it down with a concrete example. Consider the word "fox" from the phrase "The quick brown fox." In our baseline 1B model, each attention head works with a 64-dimensional query/key vector. RoPE groups this vector into 32 pairs: (x₁, x₂), (x₃, x₄), (x₅, x₆), and so on. We work on pairs because we rotate around circles in 2D space. For simplicity, let's focus on the first pair, (x₁, x₂). The word "fox" appears at position 3 in our phrase, so RoPE will rotate this first dimension pair by:
+코드가 복잡해 보일 수 있으니 구체적인 예로 풀어 보겠습니다. "The quick brown fox"라는 구절에서 "fox"라는 단어를 생각해 봅시다. 1B 베이스라인 모델에서 어텐션 헤드는 각각 64차원 쿼리/키 벡터를 다룹니다. RoPE는 이 벡터를 (x₁, x₂), (x₃, x₄), (x₅, x₆)처럼 32개의 쌍으로 묶습니다. 쌍으로 묶는 이유는 2차원 평면의 원 위에서 회전시키기 때문입니다. 간단히 첫 번째 쌍 (x₁, x₂)만 보겠습니다. "fox"는 이 구절에서 3번 위치에 있으므로, RoPE는 첫 번째 차원 쌍을 다음 각도만큼 회전시킵니다.
 
 ```python
 rotation_angle = position × θ₀ 
@@ -1137,54 +1137,54 @@ rotation_angle = position × θ₀
                 = 3.0 radians 
                 = 172° degrees
 ```
-Our base frequency is 10,000, but for the first dimension pair ( *k* =0) our exponent is 0, so the base frequency doesn't affect the calculation (we raise to the power of 0). The following visualization illustrates this.
+기본 주파수는 10,000이지만, 첫 번째 차원 쌍(*k*=0)에서는 지수가 0입니다. 10,000을 0제곱하는 셈이라 기본 주파수가 계산에 영향을 주지 않습니다. 다음 시각화가 이 과정을 보여 줍니다.
 
 <HtmlEmbed src="/embeds/rope-demo.html" />
 
 
 
-Now the magic happens, when two tokens interact through attention. The dot product between their rotated representations directly encodes their relative distance through the phase difference between their rotation angles (where  `m`  and  `n`  are the token positions):
+RoPE의 진가는 두 토큰이 어텐션으로 상호작용할 때 드러납니다. 회전시킨 두 표현을 내적하면, 회전각의 위상 차이에 둘 사이의 상대 거리가 그대로 담깁니다. 여기서 `m`과 `n`은 두 토큰의 위치입니다.
 
 ```python
 dot_product(RoPE(x, m), RoPE(y, n)) = Σₖ [xₖ * yₖ * cos((m-n) * θₖ)]
 ```
-The attention pattern depends only on ( `m-n` ), so tokens that are five positions apart will always have the same angular relationship, regardless of their absolute positions in the sequence. Therefore, the model learns distance-based patterns that work at any absolute position in the sequence and can extrapolate to longer sequences. 
+어텐션 패턴은 `m-n`에만 달려 있습니다. 따라서 다섯 칸 떨어진 두 토큰은 시퀀스 안의 절대 위치와 상관없이 언제나 각도 관계가 같습니다. 그래서 모델은 시퀀스의 어느 위치에서든 통하는 거리 기반 패턴을 학습하고, 더 긴 시퀀스로 외삽(extrapolation)할 수 있습니다.
 
- **Configuring RoPE Frequency** 
+ **RoPE 주파수 설정하기**
 
-In practice, most LLM pretraining starts with relatively short context lengths (2–4k tokens) using RoPE base frequencies like 10k or 50k. Training with very long sequences from the start would be computationally expensive due to attention's quadratic scaling with sequence length and the limited availability of long context data (samples > 4k context length), as we saw earlier when we looked at [document masking](#document_masking). Research also suggests it can hurt short context performance [@skyladder]. Models typically start by learning short-range correlations between words, so long sequences don't help much. The typical approach is to do most pretraining with shorter sequences, then do continual pretraining or spend the final few hundred billion tokens on longer sequences. However, as sequence lengths grow, the rotation angles, which are proportional to token positions, also grow, which can cause attention scores for distant tokens to decay too rapidly [@xiong2023effectivelongcontextscalingfoundation; @rozière2024codellamaopenfoundation]:
+실제로 LLM 사전 학습은 대부분 2-4k 토큰 정도의 비교적 짧은 컨텍스트 길이에서, 10k나 50k 같은 RoPE 기본 주파수를 써서 시작합니다. 처음부터 아주 긴 시퀀스로 학습하면 연산 비용이 너무 큽니다. 어텐션 연산량이 시퀀스 길이의 제곱에 비례해 늘어나는 데다, 앞서 [문서 마스킹](#document_masking)을 살펴볼 때 봤듯이 컨텍스트 길이가 4k를 넘는 긴 컨텍스트 샘플도 많지 않기 때문입니다. 연구에 따르면 짧은 컨텍스트 성능이 떨어질 수도 있습니다[@skyladder]. 모델은 보통 단어 사이의 가까운 관계부터 배우기 때문에, 처음부터 긴 시퀀스를 줘도 별 도움이 되지 않습니다. 그래서 일반적으로는 사전 학습 대부분을 짧은 시퀀스로 진행한 뒤, 지속 사전 학습을 하거나 마지막 수천억 토큰을 긴 시퀀스로 학습합니다. 그런데 시퀀스가 길어지면 토큰 위치에 비례하는 회전각도 함께 커져서, 멀리 떨어진 토큰의 어텐션 점수가 너무 빠르게 줄어들 수 있습니다[@xiong2023effectivelongcontextscalingfoundation; @rozière2024codellamaopenfoundation].
 
 ```python
 θ = position x 1 / (base^(k/(dim/2)))
 ```
-The solution is to increase the base frequency as the sequence length is increased in order to prevent such decaying, using methods like ABF and YaRN.
+해결책은 시퀀스 길이를 늘릴 때 기본 주파수도 함께 키워, 이런 감쇠를 막는 것입니다. ABF와 YaRN 같은 방법이 여기에 해당합니다.
 
- *RoPE ABF (RoPE with Adjusted Base Frequency)*  [@ropeabf] addresses the attention decay problem in long contexts by increasing the base frequency in RoPE's formulation. This adjustment slows down the rotation angles between token positions, preventing distant tokens' attention scores from decaying too rapidly. ABF can be applied in a single stage (direct frequency boost) or multiple stages (gradual increases as context grows). The method is straightforward to implement and distributes embedded vectors with increased granularity, making distant positions easier for the model to differentiate. 
+'RoPE ABF'(RoPE with Adjusted Base Frequency)[@ropeabf]는 RoPE 공식의 기본 주파수를 키워, 긴 컨텍스트에서 어텐션이 감쇠하는 문제를 해결합니다. 이렇게 조정하면 토큰 위치에 따른 회전각이 천천히 커지므로, 멀리 떨어진 토큰의 어텐션 점수가 너무 빠르게 줄어들지 않습니다. ABF는 한 번에 적용할 수도 있고(주파수를 곧바로 올림), 여러 단계로 나눠 적용할 수도 있습니다(컨텍스트가 길어질 때마다 조금씩 올림). 구현이 간단하고, 임베딩 벡터가 더 세밀하게 분포하므로 모델이 먼 위치도 쉽게 구별할 수 있습니다.
 
-While simple and effective, ABF's uniform scaling across all dimensions may not be optimal for extremely long contexts.  *YaRN (Yet another RoPE extensioN)*  [@yarn] takes a more sophisticated approach by interpolating frequencies unevenly across RoPE dimensions using a ramp or scaling function. Unlike ABF's uniform adjustment, YaRN applies different scaling factors to different frequency components, optimizing the extended context window. It includes additional techniques like dynamic attention scaling and temperature adjustment in attention logits, which help preserve performance at very large context sizes. YaRN enables efficient "train short, test long" strategies, requiring fewer tokens and less fine-tuning for robust extrapolation. While more complex than ABF, YaRN generally delivers better empirical performance for extremely long contexts by providing smoother scaling and mitigating catastrophic attention loss. It can also be leveraged in inference alone without any fine-tuning.
+ABF는 간단하고 효과적이지만, 모든 차원을 똑같은 비율로 조정하기 때문에 아주 긴 컨텍스트에서는 최선이 아닐 수 있습니다. 'YaRN'(Yet another RoPE extensioN)[@yarn]은 더 정교한 방법을 씁니다. 램프 함수나 스케일링 함수를 이용해 RoPE 차원마다 주파수를 서로 다르게 보간합니다. ABF처럼 일률적으로 조정하는 대신 주파수 성분마다 다른 배율을 적용해, 늘어난 컨텍스트 윈도우에 맞게 최적화하는 것입니다. 여기에 동적 어텐션 스케일링과 어텐션 로짓의 온도 조정 같은 기법이 더해져, 컨텍스트가 아주 커져도 성능을 지키는 데 도움이 됩니다. YaRN을 쓰면 "짧게 학습하고 길게 테스트하는" 효율적인 전략이 가능해, 안정적으로 외삽하는 데 필요한 토큰과 파인튜닝이 줄어듭니다. ABF보다 복잡하지만, 더 매끄럽게 스케일링하고 어텐션이 급격히 무너지는 현상을 완화해 주므로 아주 긴 컨텍스트에서 대체로 더 좋은 실측 성능을 냅니다. 파인튜닝 없이 추론 단계에서만 쓸 수도 있습니다.
 
-These frequency adjustment methods slow down the attention score decay effect and maintain the contribution of distant tokens. For instance, the training of Qwen3 involved increasing the frequency from 10k to 1M using ABF as the sequence length was extended from a 4k to a 32k context window (the team then applied YaRN to reach 131k, 4× extrapolation). Note that there's no strong consensus on optimal values, and it's usually good to experiment with different RoPE values during the context extension phase to find what works best for your specific setup and evaluation benchmarks.
+이런 주파수 조정 방법은 어텐션 점수가 줄어드는 속도를 늦춰, 멀리 있는 토큰도 계속 제 몫을 하게 합니다. 예를 들어 Qwen3는 학습 중 컨텍스트 윈도우를 4k에서 32k로 늘리면서 ABF로 주파수를 10k에서 1M으로 키웠습니다(그 뒤 YaRN을 적용해 4배 외삽한 131k까지 도달했습니다). 다만 무엇이 최적값인지는 뚜렷한 합의가 없습니다. 컨텍스트를 확장하는 단계에서 여러 RoPE 값을 실험해, 자신의 설정과 평가 벤치마크에 가장 잘 맞는 값을 찾아보는 편이 좋습니다.
 
-Most major models today use RoPE: Llama, Qwen, Gemma, and many others. The technique has proven robust across different model sizes and architectures (dense, MoE, hybrid). 
+오늘날 Llama, Qwen, Gemma를 비롯한 주요 모델 대부분이 RoPE를 사용합니다. RoPE는 모델 크기나 아키텍처(밀집, MoE, 하이브리드)가 달라도 안정적으로 잘 작동해 왔습니다.
 
- **Hybrid Positional Encoding Approaches** 
+ **하이브리드 위치 인코딩 방식**
 
-As models push toward increasingly large contexts [@qwen1Million; @llama4], however, even RoPE starts to hit performance challenges. The standard approach of increasing RoPE's frequency during long context extension has limitations when evaluated on long context benchmarks more challenging than Needle in a Haystack (NIAH) [@niah], such as RULER and HELMET [@ruler; @helmet]. Newer techniques have been introduced to help.
+하지만 모델이 다루는 컨텍스트가 점점 더 커지면서[@qwen1Million; @llama4], RoPE조차 성능 문제에 부딪히고 있습니다. 긴 컨텍스트 확장 단계에서 RoPE 주파수를 키우는 표준 방식은, Needle in a Haystack(NIAH)[@niah]보다 어려운 긴 컨텍스트 벤치마크인 RULER나 HELMET[@ruler; @helmet]으로 평가하면 한계를 드러냅니다. 이 한계를 보완할 새로운 기법도 나왔습니다.
 
-We started this section by saying that transformers need positional information to understand token order, but recent research has challenged this assumption. What if explicit positional encodings weren't necessary after all?
+이 절을 시작하면서, 트랜스포머가 토큰 순서를 이해하려면 위치 정보가 필요하다고 했습니다. 그런데 최근 연구는 이 가정에 의문을 던집니다. 명시적인 위치 인코딩이 사실은 필요 없다면 어떨까요?
 
- *NoPE*  [@nope] trains transformers without any explicit positional encoding, allowing the model to implicitly learn positional information through causal masking and attention patterns. The authors show that this approach demonstrates better length generalization compared to ALiBi and RoPE. Without explicit positional encoding to extrapolate beyond training lengths, NoPE naturally handles longer contexts. In practice, though, NoPE models tend to show weaker performance than RoPE models on short context reasoning and knowledge tasks [@rnope]. This suggests that while explicit positional encodings may limit extrapolation, they provide useful inductive biases for tasks within the training context length.
+'NoPE'[@nope]는 명시적인 위치 인코딩 없이 트랜스포머를 학습시켜, 모델이 인과 마스킹과 어텐션 패턴에서 위치 정보를 암묵적으로 배우게 합니다. 저자들은 이 방식이 ALiBi나 RoPE보다 길이 일반화(length generalization) 성능이 더 좋다고 보고했습니다. 학습 길이 너머로 외삽해야 할 명시적 위치 인코딩이 없으니, NoPE는 더 긴 컨텍스트도 자연스럽게 처리합니다. 하지만 실제로는 짧은 컨텍스트에서 추론 능력과 지식을 평가하는 과제에서 NoPE 모델이 RoPE 모델보다 성능이 떨어지는 경향이 있습니다[@rnope]. 명시적인 위치 인코딩이 외삽을 제한할 수는 있어도, 학습한 컨텍스트 길이 안의 과제에서는 유용한 귀납 편향을 제공한다는 뜻입니다.
 
-Given these trade-offs, @rnope suggest that combining different positional encoding strategies might be interesting. The hybrid approach they introduce, RNoPE, alternates between RoPE and NoPE layers throughout the model. RoPE layers provide explicit positional information and handle local context with recency bias, while NoPE layers improve information retrieval across long distances. This technique was recently used in Llama 4, Command A, and SmolLM3.
+이런 장단점을 고려해, @rnope 연구진은 서로 다른 위치 인코딩 전략을 조합해 볼 만하다고 제안합니다. 이들이 소개한 하이브리드 방식인 RNoPE는 모델 전체에 걸쳐 RoPE 레이어와 NoPE 레이어를 번갈아 배치합니다. RoPE 레이어는 명시적인 위치 정보를 제공하고 최신성 편향으로 가까운 문맥을 처리하며, NoPE 레이어는 멀리 떨어진 정보를 더 잘 찾아냅니다. 최근에는 Llama 4, Command A, SmolLM3가 이 기법을 채택했습니다.
 
-<Note title="Naming convention" emoji="📍" variant="info">
+<Note title="명명 규칙" emoji="📍" variant="info">
 
-We'll call RNoPE "NoPE" for the rest of this guide, to keep things simple. (You'll often see people use "NoPE" to mean "RNoPE" in discussions of long context models.)
+이 가이드의 나머지 부분에서는 편의상 RNoPE를 "NoPE"라고 부르겠습니다. (긴 컨텍스트 모델을 다루는 글에서도 "NoPE"를 "RNoPE"라는 뜻으로 쓰는 경우를 자주 볼 수 있습니다.)
 </Note>
 
- **Ablation—NoPE Matches RoPE on Short**Context**  **Documents** 
+ **어블레이션: 짧은 컨텍스트 문서에서 NoPE는 RoPE와 대등하다**
 
-Let's test the hybrid NoPE approach. We'll compare a pure RoPE 1B ablation baseline against a NoPE variant that removes positional encoding every fourth layer and a third configuration combining NoPE with document masking, to test the interaction between these techniques. Our base question is: Can we maintain strong short context performance while gaining long context capabilities?
+하이브리드 NoPE 방식을 시험해 보겠습니다. RoPE만 쓰는 1B 어블레이션 베이스라인과, 네 번째 레이어마다 위치 인코딩을 없앤 NoPE 변형을 비교합니다. 두 기법이 서로 어떻게 작용하는지 보기 위해, NoPE와 문서 마스킹을 함께 쓰는 세 번째 설정도 넣었습니다. 핵심 질문은 다음과 같습니다. 긴 컨텍스트 능력을 얻으면서도 짧은 컨텍스트에서 강한 성능을 유지할 수 있을까요?
 
 <HtmlEmbed
 src="embeds/d3-line-chart.html"
@@ -1193,7 +1193,7 @@ dataUrl: "./data/nope_loss.csv",
 xDomain: [0, 45e9],
 yDomain: [2.1, 2.7],
 smoothing: true,
-title: "NoPE Loss"
+title: "NoPE 손실"
 }}
 />
 
@@ -1219,19 +1219,19 @@ smoothingWindow: 5
 
 
 
-The loss and evaluation results show similar performance across all three configurations, indicating that NoPE maintains strong short context capabilities while providing the foundation for better long context handling. Given these results, we adopted the NoPE + document masking combination for SmolLM3.
+손실과 평가 결과를 보면 세 설정의 성능이 모두 비슷합니다. NoPE가 짧은 컨텍스트에서 강한 성능을 유지하면서, 긴 컨텍스트를 더 잘 처리할 토대도 마련해 준다는 뜻입니다. 이 결과를 바탕으로 SmolLM3에는 NoPE와 문서 마스킹을 함께 적용했습니다.
 
-Another complementary idea is to apply RoPE on only a subset of the model dimension. Unlike RNoPE, which alternates entire layers between RoPE and NoPE,  *partial RoPE*  mixes them within the same layer. Recent models such as GLM‑4.5 [@glm45] and MiniMax-01 [@minimax01] adopt this strategy, but it was also present in older models such as GPT-J [@gptj]. You will also see partial RoPE in every model using MLA, since it's a must-have for reasonable inference costs.
+이를 보완하는 또 다른 아이디어는 모델 차원의 일부에만 RoPE를 적용하는 것입니다. 레이어 전체를 RoPE와 NoPE로 번갈아 바꾸는 RNoPE와 달리, '부분 RoPE'(partial RoPE)는 한 레이어 안에서 둘을 섞습니다. GLM‑4.5[@glm45]와 MiniMax-01[@minimax01] 같은 최근 모델이 이 전략을 택했고, GPT-J[@gptj] 같은 예전 모델에도 있었습니다. MLA를 쓰는 모델이라면 모두 부분 RoPE를 사용합니다. 추론 비용을 합리적인 수준으로 유지하려면 반드시 필요하기 때문입니다.
 
-<Note title="Technical explanation: Why partial RoPE is essential for MLA" emoji="🔧" variant="info">
+<Note title="기술 해설: MLA에 부분 RoPE가 꼭 필요한 이유" emoji="🔧" variant="info">
 
-MLA makes inference efficient with projection absorption: Instead of storing per-head keys  $k_i^{(h)}$ , it caches a small shared latent  $c_i = x_i W_c \in \mathbb{R}^{d_c}$  and merges the head's query/key maps so each score is cheap. With  $q_t^{(h)} = x_t W_q^{(h)}$  and  $k_i^{(h)} = c_i E^{(h)}$ , define  $U^{(h)} = W_q^{(h)} E^{(h)}$  to get:
+MLA는 프로젝션 흡수(projection absorption)로 추론 효율을 높입니다. 헤드마다 키 $k_i^{(h)}$를 저장하는 대신, 모든 헤드가 공유하는 작은 잠재 벡터 $c_i = x_i W_c \in \mathbb{R}^{d_c}$만 캐시에 저장하고, 헤드의 쿼리 변환과 키 변환을 하나로 합쳐 점수를 적은 비용으로 계산합니다. $q_t^{(h)} = x_t W_q^{(h)}$, $k_i^{(h)} = c_i E^{(h)}$일 때 $U^{(h)} = W_q^{(h)} E^{(h)}$로 정의하면 다음 식을 얻습니다.
 
 $$
 s_{t,i}^{(h)} \;=\; \tfrac{1}{\sqrt{d_k}}\,\big(q_t^{(h)}\big)^\top k_i^{(h)}\;=\; \tfrac{1}{\sqrt{d_k}}\,\big(x_t U^{(h)}\big)^\top c_i
 $$
 
-You then compute with  $\tilde q_t^{(h)} = x_t U^{(h)} \in \mathbb{R}^{d_c}$  against the tiny cache  $c_i$  (no per-head  $k$  is stored). RoPE breaks this because it inserts a pair-dependent rotation between the two maps. With full-dimension RoPE,
+그러면 $\tilde q_t^{(h)} = x_t U^{(h)} \in \mathbb{R}^{d_c}$를 작은 캐시 $c_i$와 바로 계산하면 됩니다(헤드별 $k$는 저장하지 않습니다). 그런데 RoPE를 쓰면 두 변환 사이에 위치 쌍에 따라 달라지는 회전이 끼어들어, 이 방식이 통하지 않습니다. 모든 차원에 RoPE를 적용하면 식은 다음과 같습니다.
 
 $$
 s_{t,i}^{(h)} \;=\; \tfrac{1}{\sqrt{d_k}}\,\big(x_t W_q^{(h)}\big)^\top
@@ -1239,65 +1239,65 @@ s_{t,i}^{(h)} \;=\; \tfrac{1}{\sqrt{d_k}}\,\big(x_t W_q^{(h)}\big)^\top
 
 $$
 
-so you can't pre-merge  $W_q^{(h)}$  and  $E^{(h)}$  into a fixed  $U^{(h)}$ . Partial RoPE provides the fix: Split head dimensions  $d_k = d_{\text{nope}} + d_{\text{rope}}$ , apply no rotation on the big block (absorb as before:  $(x_t U_{\text{nope}}^{(h)})^\top c_i$ ), and apply RoPE on only a small block.
+따라서 $W_q^{(h)}$와 $E^{(h)}$를 고정된 $U^{(h)}$ 하나로 미리 합쳐 둘 수 없습니다. 부분 RoPE가 이 문제를 해결합니다. 헤드 차원을 $d_k = d_{\text{nope}} + d_{\text{rope}}$로 나눈 뒤, 큰 블록에는 회전을 적용하지 않고 앞에서처럼 흡수하며($(x_t U_{\text{nope}}^{(h)})^\top c_i$), 작은 블록에만 RoPE를 적용합니다.
 </Note>
 
  
 
- **Limiting Attention Scope for Long Contexts** 
+ **긴 컨텍스트를 위한 어텐션 범위 제한**
 
-So far, we've explored how to handle positional information for long contexts: activating RoPE, disabling it (NoPE), applying it partially on some layers (RNoPE) or on some hidden dimensions (partial RoPE), or adjusting its frequency (ABF, YaRN). These approaches modify how the model encodes position to handle sequences longer than those seen during training. But there's a complementary strategy: Instead of adjusting positional encodings, we can limit which tokens attend to each other.
+지금까지 긴 컨텍스트에서 위치 정보를 다루는 방법을 살펴봤습니다. RoPE를 켜거나, 끄거나(NoPE), 일부 레이어(RNoPE)나 일부 은닉 차원(부분 RoPE)에만 적용하거나, 주파수를 조정하는(ABF, YaRN) 방법이었습니다. 모두 모델이 위치를 인코딩하는 방식을 바꿔, 학습 때 본 것보다 긴 시퀀스를 다루려는 접근입니다. 그런데 이를 보완하는 전략이 하나 더 있습니다. 위치 인코딩을 조정하는 대신, 어떤 토큰끼리 서로 참조할 수 있는지를 제한하는 것입니다.
 
-To see why this matters, consider a model pretrained with sequences of 8 tokens. At inference time, we want to process 16 tokens (more than the training length). Positions 8–15 are out of distribution for the model's positional encodings. While techniques like RoPE ABF address this by adjusting position frequencies, attention scope methods take a different approach: They strategically restrict which tokens can attend to each other, keeping attention patterns within familiar ranges while still processing the full sequence. This reduces both computational cost and memory requirements. 
+이 전략이 왜 중요한지 알아보기 위해, 8토큰 길이의 시퀀스로 사전 학습한 모델을 생각해 봅시다. 추론할 때는 학습 길이보다 긴 16토큰을 처리하려고 합니다. 이때 8-15번 위치는 위치 인코딩이 학습 때 다뤄 보지 못한 분포 밖 위치입니다. RoPE ABF 같은 기법은 위치 주파수를 조정해 이 문제를 풀지만, 어텐션 범위를 제한하는 방법은 접근 방식이 다릅니다. 어떤 토큰끼리 참조할 수 있는지를 전략적으로 제한해, 시퀀스 전체를 처리하면서도 어텐션 패턴은 익숙한 범위 안에 머물게 합니다. 덕분에 연산 비용과 메모리 요구량도 함께 줄어듭니다.
 
-The following diagram compares five strategies for handling our 16-token sequence with a pretraining window of 8.
+다음 다이어그램은 사전 학습 윈도우가 8일 때, 16토큰 시퀀스를 처리하는 다섯 가지 전략을 비교합니다.
 
 <HtmlEmbed src="embeds/position-masking.html"/>
 
 
 
- *Chunked attention*  divides the sequence into fixed-size chunks, where tokens can only attend within their chunk. In our example, the 16 tokens are split into two 8-token chunks (0 to 7 and 8 to 15). Notice how tokens 8 through 15 cannot attend back to the earlier chunk at all. This creates isolated attention windows that reset at chunk boundaries. Llama 4 [@llama4] uses chunked attention with 8,192-token chunks in RoPE layers (three out of four decoder layers), while NoPE layers maintain full context access. This reduces memory requirements by limiting the KV cache size per layer, though the inability of tokens in one chunk to attend to previous chunks may impact some long context tasks.
+'청크 어텐션'은 시퀀스를 고정 크기의 청크로 나누고, 토큰이 자기 청크 안에서만 참조하게 합니다. 예시에서는 16개 토큰이 8개씩 두 청크(0-7번, 8-15번)로 나뉩니다. 8-15번 토큰은 앞 청크를 전혀 참조하지 못합니다. 청크 경계마다 새로 시작되는, 서로 고립된 어텐션 윈도우가 생기는 것입니다. Llama 4[@llama4]는 RoPE 레이어(디코더 레이어 4개 중 3개)에서 8,192토큰 단위로 청크 어텐션을 쓰고, NoPE 레이어에서는 전체 컨텍스트를 참조합니다. 레이어마다 KV 캐시 크기가 제한되니 메모리 요구량은 줄지만, 한 청크의 토큰이 앞 청크를 참조할 수 없으므로 일부 긴 컨텍스트 과제에서는 성능에 영향이 있을 수 있습니다.
 
- *Sliding window attention (SWA)* , popularized by Mistral 7B [@jiang2023mistral7b; @child2019generating], takes a different approach based on the intuition that recent tokens are most relevant. Instead of hard chunk boundaries, each token attends only to the most recent  *N*  tokens. As shown in the diagram, each token can see up to 8 positions back, creating a sliding window that moves continuously through the sequence. Notice how token 15 can attend to positions 8 through 15, while token 10 attends to positions 3 through 10. The window slides forward, maintaining local context across the entire sequence without the artificial barriers of chunking. Gemma 3 combines SWA with full attention in alternating layers, similar to how hybrid positional encoding approaches mix different strategies.
+Mistral 7B[@jiang2023mistral7b; @child2019generating]로 널리 알려진 '슬라이딩 윈도우 어텐션'(sliding window attention, SWA)은 가장 최근 토큰이 가장 관련이 깊다는 직관에서 출발합니다. 청크처럼 경계를 딱 자르는 대신, 각 토큰이 가장 최근의 *N*개 토큰만 참조하게 합니다. 다이어그램에서 보듯이 각 토큰은 최대 8칸 앞까지 볼 수 있고, 이 윈도우가 시퀀스를 따라 계속 미끄러지듯 이동합니다. 15번 토큰은 8-15번 위치를, 10번 토큰은 3-10번 위치를 참조합니다. 윈도우가 이렇게 옮겨 가면서, 청크 나누기 같은 인위적인 장벽 없이 시퀀스 전체에서 가까운 문맥을 유지합니다. Gemma 3는 SWA와 전체 어텐션을 레이어마다 번갈아 배치하는데, 하이브리드 위치 인코딩이 여러 전략을 섞는 것과 비슷합니다.
 
- *Dual Chunk Attention (DCA)*  [@dca] is a training-free method that extends chunked attention while maintaining cross-chunk information flow. In our example, we use chunk size  *s* =4, dividing the 16 tokens into 4 chunks (visualize 4×4 squares along the diagonal). DCA combines three mechanisms: 
+'듀얼 청크 어텐션'(Dual Chunk Attention, DCA)[@dca]은 추가 학습 없이 적용할 수 있는 방법으로, 청크 어텐션을 확장하면서도 청크 사이로 정보가 흐르게 해 줍니다. 예시에서는 청크 크기를 *s*=4로 정해 16개 토큰을 청크 4개로 나눕니다(대각선을 따라 4×4 정사각형 네 개가 놓인 모습입니다). DCA는 세 가지 메커니즘을 결합합니다.
 
-1. Intra-chunk attention, where tokens attend normally within their chunk (the diagonal pattern)
-1. Inter-chunk attention, where queries use position index  *c* −1=7 to attend to previous chunks, creating relative positions capped at 7
-1. Successive chunk attention with local window  *w* =3 that preserves locality between neighboring chunks
+1. 청크 내 어텐션: 토큰이 자기 청크 안에서는 평소처럼 참조합니다(대각선 패턴).
+1. 청크 간 어텐션: 쿼리가 위치 인덱스 *c*−1=7을 사용해 이전 청크를 참조하므로, 상대 위치가 최대 7로 제한됩니다.
+1. 인접 청크 어텐션: 크기가 *w*=3인 지역 윈도우를 두어, 바로 붙어 있는 두 청크 사이에서도 가까운 토큰끼리의 관계가 끊기지 않게 합니다.
 
-This keeps all relative positions within the training distribution (0 to 7) while maintaining smooth transitions across chunk boundaries. DCA enables models like Qwen2.5 to support ultra-long context windows (up to 1 million tokens) at inference time, without requiring continual training on million-token sequences.
+이렇게 하면 모든 상대 위치가 학습 때의 분포(0-7) 안에 머물면서도, 청크 경계를 넘나드는 흐름이 매끄럽게 유지됩니다. DCA 덕분에 Qwen2.5 같은 모델은 100만 토큰 길이의 시퀀스로 지속 학습하지 않고도, 추론할 때 최대 100만 토큰의 매우 긴 컨텍스트 윈도우를 지원합니다.
 
-<Note title="Attention sinks" emoji="📊" variant="info">
+<Note title="어텐션 싱크" emoji="📊" variant="info">
 
-An interesting phenomenon emerges in transformer models with long contexts: The model assigns unusually high attention scores to the initial tokens in the sequence, even when they aren't semantically important. These initial tokens act as a stabilization mechanism for the attention distribution, serving as a "sink" where attention can accumulate (<a href="https://arxiv.org/abs/2309.17453">Xiao et al., 2024</a>).
+긴 컨텍스트를 다루는 트랜스포머 모델에서는 흥미로운 현상이 나타납니다. 시퀀스 맨 앞의 토큰이 의미상 중요하지 않은데도, 모델이 이 토큰에 유난히 높은 어텐션 점수를 줍니다. 이 첫 토큰은 어텐션 분포를 안정시키는 장치 역할을 하며, 어텐션이 고이는 "싱크"가 됩니다(<a href="https://arxiv.org/abs/2309.17453">Xiao et al., 2024</a>).
 
-The practical insight is that keeping the KV cache of just the initial few tokens alongside a sliding window of recent tokens largely maintains performance when context exceeds the cache size. This simple modification enables models to handle much longer sequences without fine-tuning or performance degradation.
+실용적인 시사점은 이렇습니다. 맨 앞 몇 개 토큰의 KV 캐시만 남겨 두고 최근 토큰을 보는 슬라이딩 윈도우와 함께 쓰면, 컨텍스트가 캐시 크기를 넘어서도 성능이 대체로 유지됩니다. 이 간단한 수정만으로 모델이 파인튜닝도, 성능 저하도 없이 훨씬 긴 시퀀스를 처리할 수 있습니다.
 
-Modern implementations leverage attention sinks in different ways. The original research suggests adding a dedicated placeholder token during pretraining to serve as an explicit attention sink. More recently, models like gpt-oss implement attention sinks as <em>learned per-head bias logits</em> that are appended to the attention scores rather than actual tokens in the input sequence. This approach achieves the same stabilization effect without modifying the tokenized inputs.
+최신 구현은 어텐션 싱크를 여러 방식으로 활용합니다. 원래 연구에서는 사전 학습 중에 전용 자리 표시용 토큰을 추가해, 명시적인 어텐션 싱크로 쓰자고 제안했습니다. 더 최근에는 gpt-oss 같은 모델이 어텐션 싱크를 입력 시퀀스의 실제 토큰이 아니라, 어텐션 점수에 덧붙이는 <em>헤드별 학습된 편향 로짓</em>으로 구현합니다. 이 방식은 토큰화된 입력을 건드리지 않고도 같은 안정화 효과를 냅니다.
 
-Interestingly, gpt-oss also uses bias units in the attention layers themselves, a design choice rarely seen since GPT-2. While these bias units are generally considered redundant for standard attention operations (empirical results from <a href="https://arxiv.org/pdf/2302.08626">Dehghani et al.</a> show minimal impact on test loss), they can serve the specialized function of implementing attention sinks. The key insight: Whether implemented as special tokens, learned biases, or per-head logits, attention sinks provide a stable "anchor" for attention distributions in long context scenarios, allowing the model to store generally useful information about the entire sequence even as context grows arbitrarily long.
+흥미롭게도 gpt-oss는 어텐션 레이어 자체에도 편향 항을 사용합니다. GPT-2 이후로는 거의 볼 수 없던 설계입니다. 표준 어텐션 연산에서는 이런 편향 항을 대체로 불필요하다고 보지만(<a href="https://arxiv.org/pdf/2302.08626">Dehghani et al.</a>의 실험 결과에서도 테스트 손실에 거의 영향이 없었습니다), 어텐션 싱크를 구현하는 특별한 역할을 할 수 있습니다. 핵심은 이렇습니다. 특수 토큰이든, 학습된 편향이든, 헤드별 로짓이든, 어텐션 싱크는 긴 컨텍스트에서 어텐션 분포에 안정적인 "닻"을 제공합니다. 덕분에 컨텍스트가 아무리 길어져도, 모델이 시퀀스 전체에 걸쳐 두루 쓸모 있는 정보를 담아 둘 수 있습니다.
 </Note>
 
-We've now covered the core components of attention: the different head configurations that balance memory and compute (MHA, GQA, MLA), the positional encoding strategies that help models understand token order (RoPE, NoPE, and their variants), and the attention scope techniques that make long contexts tractable (sliding windows, chunking, and attention sinks). We've also examined how embedding layers should be configured and initialized. These architectural choices define how your model processes and represents sequences.
+이로써 어텐션의 핵심 구성 요소를 살펴봤습니다. 메모리와 연산량 사이의 균형을 잡는 여러 헤드 구성(MHA, GQA, MLA), 모델이 토큰 순서를 이해하도록 돕는 위치 인코딩 전략(RoPE, NoPE와 그 변형), 긴 컨텍스트를 감당하기 위한 어텐션 범위 기법(슬라이딩 윈도우, 청크 나누기, 어텐션 싱크)입니다. 임베딩 레이어를 어떻게 구성하고 초기화해야 하는지도 다뤘습니다. 이런 아키텍처 선택에 따라 모델이 시퀀스를 처리하고 표현하는 방식이 정해집니다.
 
-But having the right architecture is only half the battle. Even well-designed models can suffer from training instability, especially at scale. Let's look at some techniques that help keep training stable.
+하지만 아키텍처를 잘 갖췄다고 끝이 아닙니다. 잘 설계한 모델도 특히 규모가 커지면 학습 불안정성에 시달릴 수 있습니다. 학습을 안정적으로 유지하는 데 도움이 되는 기법 몇 가지를 살펴보겠습니다.
 
-#### Improving Stability
+#### 안정성 높이기
 
-We're now going to turn to one of the biggest challenges in LLM pretraining: instabilities. Often manifesting as loss spikes or sudden jumps in training loss, these issues become especially common at scale.
+이제 LLM 사전 학습에서 가장 큰 난관으로 꼽히는 불안정성으로 넘어가겠습니다. 불안정성은 흔히 손실 스파이크, 즉 학습 손실이 갑자기 치솟는 현상으로 나타나며, 규모가 커질수록 특히 자주 발생합니다.
 
-While we'll dive deeper into the different types of spikes and how to handle them in ["The Training Marathon"](#the-training-marathon) (exploring topics such as floating-point precision, optimizers, and learning rate), certain architectural and training techniques can also help us reduce instability, so let's take a moment to study them. We'll cover a few simple techniques used in recent large-scale training runs (e.g., OLMo 2 [@olmo2] and Qwen3 [@qwen3]) to improve stability: Z-loss, removing weight decay from embeddings, and QK-norm.
+스파이크의 여러 유형과 대처법은 ["학습 마라톤"](#the-training-marathon) 장에서 부동소수점 정밀도, 옵티마이저, 학습률 같은 주제와 함께 더 깊이 다룹니다. 다만 일부 아키텍처 기법과 학습 기법도 불안정성을 줄이는 데 도움이 되므로, 여기서 잠시 살펴보겠습니다. 최근 대규모 학습(예: OLMo 2[@olmo2], Qwen3[@qwen3])에서 안정성을 높이기 위해 쓴 간단한 기법 몇 가지를 다룹니다. Z-loss, 임베딩에서 가중치 감쇠(weight decay) 제거, QK-norm입니다.
 
  **Z-loss** 
 
-Z-loss [@palm] is a regularization technique that prevents the final output logits from growing too large by adding a penalty term to the loss function. The regularization encourages the denominator of the softmax over the logits to stay within a reasonable range, which helps maintain numerical stability during training:
+Z-loss[@palm]는 손실 함수에 페널티 항을 더해, 최종 출력 로짓이 지나치게 커지지 않도록 막는 규제(regularization) 기법입니다. 이 규제는 로짓에 적용하는 소프트맥스의 분모가 적당한 범위 안에 머물도록 유도해, 학습 중 수치 안정성을 유지하는 데 도움을 줍니다.
 
 $$
 \mathcal{L}_{\text{z-loss}} = \lambda \cdot \log^2(Z)
 $$
 
-The ablation results on our 1B model show that adding Z-loss doesn't impact the training loss or downstream performance. For SmolLM3, we ended up not using it because our Z-loss implementation introduced some training overhead that we hadn't optimized by the time we started training.
+1B 모델로 어블레이션을 해 보니, Z-loss를 더해도 학습 손실이나 다운스트림 성능에는 영향이 없었습니다. 결국 SmolLM3에는 Z-loss를 쓰지 않았습니다. Z-loss 구현 때문에 학습 오버헤드가 조금 생겼는데, 본 학습을 시작할 때까지 최적화하지 못했기 때문입니다.
 
 <HtmlEmbed
 src="embeds/d3-line-chart.html"
@@ -1308,8 +1308,8 @@ yColumn: "loss",
 runColumn: "run_name",
 xScaleType: "linear",
 yScaleType: "linear",
-xAxisLabel: "Consumed tokens",
-yAxisLabel: "Training Loss",
+xAxisLabel: "학습한 토큰 수",
+yAxisLabel: "학습 손실",
 xDomain: [0, 45e9],
 yDomain: [1, 5],
 }}
@@ -1337,11 +1337,11 @@ smoothingWindow: 15
 
 
 
- **Removing Weight Decay from Embeddings** 
+ **임베딩에서 가중치 감쇠 제거하기**
 
-Weight decay is commonly applied to all model parameters as a regularization technique, but @olmo2 found that excluding embeddings from weight decay improves training stability. The reasoning is that weight decay causes embedding norms to gradually decrease during training, which can lead to larger gradients in early layers since the Jacobian of layer normalization is inversely proportional to the input norm [@takase2025spikemorestabilizingpretraining].
+가중치 감쇠는 보통 규제 기법으로 모델의 모든 파라미터에 적용합니다. 그런데 @olmo2 연구진은 임베딩을 가중치 감쇠에서 제외하면 학습 안정성이 좋아진다는 결과를 얻었습니다. 가중치 감쇠 때문에 학습이 진행될수록 임베딩의 노름(norm)이 점점 작아지는데, 레이어 정규화의 야코비안은 입력 노름에 반비례하므로 앞쪽 레이어의 그래디언트가 커질 수 있다는 것이 그 이유입니다[@takase2025spikemorestabilizingpretraining].
 
-We tested this approach by training three configurations: our baseline with standard weight decay, a variant with no weight decay on embeddings, and a third configuration combining all our adopted changes (no weight decay on embeddings + NoPE + document masking) to ensure there were no negative interactions between techniques. The loss curves and evaluation results were nearly identical across all three configurations, so we adopted all three changes in SmolLM3 training.
+세 가지 설정을 학습해 이 방법을 시험했습니다. 표준 가중치 감쇠를 쓰는 베이스라인, 임베딩에 가중치 감쇠를 적용하지 않는 변형, 그리고 기법 사이에 나쁜 상호작용이 없는지 확인하기 위해 지금까지 채택한 변경을 모두 합친 세 번째 설정(임베딩 가중치 감쇠 제거 + NoPE + 문서 마스킹)입니다. 세 설정의 손실 곡선과 평가 결과가 거의 같았기 때문에, SmolLM3 학습에 세 가지 변경을 모두 적용했습니다.
 
 <HtmlEmbed 
   src="embeds/d3-line-chart.html" 
@@ -1352,8 +1352,8 @@ We tested this approach by training three configurations: our baseline with stan
     runColumn: "run_name",
     xScaleType: "linear",
     yScaleType: "linear",
-    xAxisLabel: "Consumed tokens",
-    yAxisLabel: "Training Loss",
+    xAxisLabel: "학습한 토큰 수",
+    yAxisLabel: "학습 손실",
     xDomain: [0, 45e9],
     yDomain: [1, 5],
   }} 
@@ -1383,21 +1383,21 @@ smoothingWindow: 15
 
  **QK-norm** 
 
-QK-norm [@dehghani2023scalingvisiontransformers22] applies layer normalization to both the query and key vectors before computing attention. This technique helps prevent attention logits from becoming too large and has been used in many recent models to improve stability.
+QK-norm[@dehghani2023scalingvisiontransformers22]은 어텐션을 계산하기 전에 쿼리 벡터와 키 벡터 모두에 레이어 정규화를 적용합니다. 어텐션 로짓이 지나치게 커지지 않게 막아 주는 기법으로, 최근 많은 모델이 안정성을 높이기 위해 사용해 왔습니다.
 
-However, @rnope found that QK-norm degrades performance on long context tasks. Their analysis revealed that QK-norm results in lower attention mass on relevant tokens (needles) and higher attention mass on irrelevant context. They argue this occurs because the normalization operation removes magnitude information from the query–key dot product, which makes the attention logits closer in terms of magnitude. For this reason, we didn't use QK-norm in SmolLM3. (Additionally, as a small 3B-parameter model, it faces less risk of training instability compared to the larger models where QK-norm has proven most beneficial.)
+하지만 @rnope 연구진은 QK-norm이 긴 컨텍스트 과제의 성능을 떨어뜨린다고 보고했습니다. 분석해 보니 QK-norm을 쓰면 관련 있는 토큰, 즉 바늘(needle)에 쏠리는 어텐션은 줄고, 관련 없는 문맥에 쏠리는 어텐션은 늘었습니다. 연구진은 정규화 연산이 쿼리–키 내적에서 크기 정보를 없애 버려, 어텐션 로짓의 크기가 서로 비슷해지기 때문이라고 설명합니다. 이런 이유로 SmolLM3에는 QK-norm을 쓰지 않았습니다. (게다가 SmolLM3는 3B 파라미터의 작은 모델이라, QK-norm이 가장 큰 효과를 보인 대형 모델보다 학습 불안정성 위험도 적습니다.)
 
-#### Additional Considerations
+#### 그 밖의 고려 사항
 
-Beyond the components we've covered so far, there are a few other architectural decisions worth noting for completeness.
+지금까지 다룬 구성 요소 말고도, 빠짐없이 짚어 두면 좋을 아키텍처 결정이 몇 가지 더 있습니다.
 
-To initialize parameters, modern models typically use truncated normal initialization (mean=0, std=0.02 or std=0.006) or an initialization scheme like μP [@mup] (for instance, Cohere's Command A [@commandacohere]). This could be another topic for ablations.
+최신 모델은 파라미터를 초기화할 때 보통 잘린 정규분포 초기화(평균 0, 표준편차 0.02 또는 0.006)나 μP[@mup] 같은 초기화 기법(예: Cohere의 Command A[@commandacohere])을 사용합니다. 이 역시 어블레이션으로 따져 볼 만한 주제입니다.
 
-In terms of activation functions, SwiGLU has become a de facto standard in modern LLMs (except Gemma 2, which uses GeGLU, and NVIDIA, which uses ReLU^2 [@nvidia2025nvidianemotronnano2; @nvidia2024nemotron4340btechnicalreport]), replacing older choices like ReLU or GELU.
+활성화 함수로는 SwiGLU가 ReLU나 GELU 같은 예전 선택지를 밀어내고 최신 LLM의 사실상 표준이 되었습니다(예외로 Gemma 2는 GeGLU를, NVIDIA는 ReLU^2를 사용합니다[@nvidia2025nvidianemotronnano2; @nvidia2024nemotron4340btechnicalreport]).
 
-At a broader scale, architectural layout choices also play a role in shaping model behavior. Although the total parameter count largely determines a language model's capacity, how those parameters are distributed across depth and width also matters. @petty2024impactdepthcompositionalgeneralization found that deeper models outperform equally sized wider ones on language modeling and compositional tasks until the benefit saturates. This "deep and thin" strategy works well for sub-billion-parameter LLMs in MobileLLM ablations [@mobilellm], whereas wider models tend to offer faster inference thanks to greater parallelism. Modern architectures reflect this trade-off differently, as Sebastian Raschka notes in his [LLM architecture comparison](https://sebastianraschka.com/blog/2025/the-big-llm-architecture-comparison.html). 
+더 큰 틀에서 보면, 아키텍처의 배치 방식도 모델의 동작에 영향을 줍니다. 언어 모델의 표현력은 대체로 전체 파라미터 수로 정해지지만, 그 파라미터를 깊이와 너비에 어떻게 나누느냐도 중요합니다. @petty2024impactdepthcompositionalgeneralization 연구에 따르면, 크기가 같다면 깊은 모델이 넓은 모델보다 언어 모델링과 구성적 과제(compositional task)에서 더 좋은 성능을 냅니다. 다만 그 이점은 어느 지점에서 포화됩니다. 이 "깊고 가는" 전략은 MobileLLM 어블레이션[@mobilellm]에서 파라미터가 10억 개 미만인 LLM에 잘 맞았습니다. 반면 넓은 모델은 병렬성이 높아 추론이 더 빠른 경향이 있습니다. Sebastian Raschka가 [LLM 아키텍처 비교](https://sebastianraschka.com/blog/2025/the-big-llm-architecture-comparison.html) 글에서 짚었듯이, 최신 아키텍처는 이 트레이드오프를 저마다 다르게 반영합니다.
 
-We have now covered the most important aspects of the dense transformer architecture worth optimizing for your training run. However, recently other architectural interventions that concern the model as a whole have emerged, including MoE and hybrid models. Let's take a look what they have to offer, starting with MoEs.
+지금까지 학습을 앞두고 최적화해 볼 만한 밀집 트랜스포머 아키텍처의 핵심 요소를 살펴봤습니다. 그런데 최근에는 MoE와 하이브리드 모델처럼, 모델 전체에 걸친 다른 아키텍처 시도도 등장했습니다. MoE부터 시작해, 이런 방식에 어떤 이점이 있는지 살펴보겠습니다.
 
 #### Going Sparse: MoE 
 

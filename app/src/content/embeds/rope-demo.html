@@ -243,7 +243,7 @@
 
       // Create the HTML structure
       container.innerHTML = `
-        <div class="subtitle">RoPE rotation of the first (x₁, x₂) pair in Q/K vectors<br/> based on token position</div>
+        <div class="subtitle">토큰 위치에 따른 RoPE 회전:<br/> Q/K 벡터의 첫 번째 (x₁, x₂) 쌍</div>
         <div class="sentence" id="sentence"></div>
         <div class="slider-container">
           <input type="range" class="slider" id="positionSlider" min="0" max="5" step="1" value="0">
@@ -253,14 +253,14 @@
         </div>
         
         <div class="rotation-info" id="rotationInfo">
-          <span class="word-highlight">The</span> at position <span class="position-highlight">0</span> gets rotated by
+          위치 <span class="position-highlight">0</span>에 있는 <span class="word-highlight">The</span>의 회전각
           <div class="equation-gap"></div>
           <span class="angle-highlight">θ = 0 rad (0°)</span>
         </div>
         <div class="explanation">
-          <strong>RoPE Formula:</strong> θ (theta) = position × 1 / base<sup>2 × pair_index/h_dim</sup> (pair_index=0 here)
+          <strong>RoPE 공식:</strong> θ (theta) = position × 1 / base<sup>2 × pair_index/h_dim</sup> (여기서는 pair_index=0)
           <br><br>
-          <strong>Key insight:</strong> The first dimension pair gets the largest rotations, and the relative angle between words depends only on their distance apart.
+          <strong>핵심:</strong> 첫 번째 차원 쌍이 가장 크게 회전합니다. 그리고 두 단어 사이의 상대 각도는 둘이 떨어진 거리에 따라서만 달라집니다.
         </div>
       `;
 
@@ -472,7 +472,7 @@
         const theta = getRopeAngle(activeIndex);
         const degrees = Math.round(theta * 180 / Math.PI);
         rotationInfo.innerHTML = `
-          <span class="word-highlight">${sentence[activeIndex]}</span> at position <span class="position-highlight">${activeIndex}</span> gets rotated by
+          위치 <span class="position-highlight">${activeIndex}</span>에 있는 <span class="word-highlight">${sentence[activeIndex]}</span>의 회전각
           <div class="equation-gap"></div>
           <div class="angle-highlight">
             <span style="color: var(--muted-color); opacity: 0.6;">θ</span>
