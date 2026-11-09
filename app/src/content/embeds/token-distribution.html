@@ -114,7 +114,7 @@
                 if (!legend) { legend = document.createElement('div'); legend.className = 'legend'; header.appendChild(legend); }
                 // Ensure title
                 let title = legend.querySelector('.legend-title');
-                if (!title) { title = document.createElement('div'); title.className = 'legend-title'; title.textContent = 'Datasets'; legend.appendChild(title); }
+                if (!title) { title = document.createElement('div'); title.className = 'legend-title'; title.textContent = '데이터셋'; legend.appendChild(title); }
                 // Ensure items container
                 let items = legend.querySelector('.items');
                 if (!items) { items = document.createElement('div'); items.className = 'items'; legend.appendChild(items); }
@@ -383,7 +383,7 @@
                     .attr('fill', 'var(--text-color)')
                     .attr('font-size', 12)
                     .attr('font-weight', 700)
-                    .text('Documents (%)');
+                    .text('문서 비율 (%)');
             }
 
             // Initial render + resize handling

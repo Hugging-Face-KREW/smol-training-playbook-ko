@@ -303,14 +303,14 @@
         chartHeight: 240,
         margin: { top: 20, right: 20, bottom: 40, left: 50 },
         zoomExtent: [1.0, 8],
-        xAxisLabel: embedConfig.xAxisLabel || 'Consumed tokens',
-        yAxisLabel: embedConfig.yAxisLabel || 'Value',
+        xAxisLabel: embedConfig.xAxisLabel || '학습한 토큰 수',
+        yAxisLabel: embedConfig.yAxisLabel || '값',
         xColumn: embedConfig.xColumn || 'tokens',
         runColumn: embedConfig.runColumn || 'run_name'
       };
 
       if (!CONFIG.charts.length) {
-        container.innerHTML = '<p style="color: var(--danger); font-size: 12px;">Error: No charts configured</p>';
+        container.innerHTML = '<p style="color: var(--danger); font-size: 12px;">오류: 설정된 차트가 없습니다</p>';
         return;
       }
 
@@ -319,7 +319,7 @@
       header.className = 'd3-multi-charts__header';
       header.innerHTML = `
       <div class="legend-bottom">
-        <div class="legend-title">Legend</div>
+        <div class="legend-title">범례</div>
         <div class="items"></div>
       </div>
     `;
@@ -339,7 +339,7 @@
         cell.style.zIndex = CONFIG.charts.length - idx; // Stacking order
         cell.innerHTML = `
         <div class="chart-cell__title">${chartConfig.title}</div>
-        <button class="reset-button">Reset</button>
+        <button class="reset-button">초기화</button>
         <div class="chart-cell__body"></div>
       `;
         grid.appendChild(cell);
@@ -757,7 +757,7 @@
       async function load() {
         try {
           const response = await fetch(CONFIG.dataUrl, { cache: 'no-cache' });
-          if (!response.ok) throw new Error(`Failed to load data: ${response.status} ${response.statusText}`);
+          if (!response.ok) throw new Error(`데이터를 불러오지 못했습니다: ${response.status} ${response.statusText}`);
 
           const csvText = await response.text();
 
@@ -855,7 +855,7 @@
 
         } catch (e) {
           const pre = document.createElement('pre');
-          pre.textContent = 'Error loading data: ' + (e && e.message ? e.message : e);
+          pre.textContent = '데이터 불러오기 오류: ' + (e && e.message ? e.message : e);
           pre.style.color = 'var(--danger, #b00020)';
           pre.style.fontSize = '12px';
           container.appendChild(pre);
