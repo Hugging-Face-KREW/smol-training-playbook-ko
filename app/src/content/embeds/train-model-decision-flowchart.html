@@ -145,29 +145,29 @@
             // Define the flowchart structure
             // Layout: top-down with very generous vertical spacing between layers
             const nodes = [
-                { id: 'A', label: 'Should you train your own model?', type: 'question', x: 400, y: 100 },
-                { id: 'B', label: 'Can existing models handle your use case?', type: 'question', x: 400, y: 240 },
-                { id: 'C', label: 'Existing models work well just with prompting', type: 'decision', x: 200, y: 400 },
-                { id: 'D', label: 'Prompting isn\'t enough', type: 'decision', x: 600, y: 400 },
-                { id: 'E', label: '❌\nDon\'t train; use existing models', type: 'success', x: 200, y: 560 },
-                { id: 'F', label: 'Can fine-tuning solve your problem?', type: 'question', x: 600, y: 600 },
-                { id: 'G', label: 'Fine-tuning works (post-training/continual pretraining)', type: 'decision', x: 450, y: 760 },
-                { id: 'H', label: 'Fine-tuning cannot solve your problem', type: 'decision', x: 750, y: 760 },
-                { id: 'I', label: '❌\nDon\'t train from scratch', type: 'success', x: 450, y: 920 },
-                { id: 'J', label: 'Train a model under one of these categories', type: 'category', x: 750, y: 960 },
-                { id: 'K', label: '🔬\nResearch', type: 'category', x: 600, y: 1120 },
-                { id: 'L', label: '🏭\nProduction', type: 'category', x: 750, y: 1120 },
-                { id: 'N', label: '🌐\nStrategic Open Source', type: 'category', x: 970, y: 1120 }
+                { id: 'A', label: '직접 모델을 학습해야 할까요?', type: 'question', x: 400, y: 100 },
+                { id: 'B', label: '기존 모델로 목적을 달성할 수 있나요?', type: 'question', x: 400, y: 240 },
+                { id: 'C', label: '기존 모델이 프롬프팅만으로 잘 작동합니다', type: 'decision', x: 200, y: 400 },
+                { id: 'D', label: '프롬프팅만으로는 부족합니다', type: 'decision', x: 600, y: 400 },
+                { id: 'E', label: '❌\n학습하지 말고 기존 모델을 쓰세요', type: 'success', x: 200, y: 560 },
+                { id: 'F', label: '미세 조정으로 문제를 해결할 수 있나요?', type: 'question', x: 600, y: 600 },
+                { id: 'G', label: '미세 조정으로 해결됩니다(사후 학습/지속 사전 학습)', type: 'decision', x: 450, y: 760 },
+                { id: 'H', label: '미세 조정으로 해결할 수 없습니다', type: 'decision', x: 750, y: 760 },
+                { id: 'I', label: '❌\n처음부터 학습하지 마세요', type: 'success', x: 450, y: 920 },
+                { id: 'J', label: '다음 목적 중 하나에 맞춰 모델을 학습하세요', type: 'category', x: 750, y: 960 },
+                { id: 'K', label: '🔬\n연구', type: 'category', x: 600, y: 1120 },
+                { id: 'L', label: '🏭\n실제 서비스', type: 'category', x: 750, y: 1120 },
+                { id: 'N', label: '🌐\n전략적 오픈소스', type: 'category', x: 970, y: 1120 }
             ];
 
             const links = [
                 { source: 'A', target: 'B', label: '' },
-                { source: 'B', target: 'C', label: 'YES' },
-                { source: 'B', target: 'D', label: 'NO' },
+                { source: 'B', target: 'C', label: '예' },
+                { source: 'B', target: 'D', label: '아니요' },
                 { source: 'C', target: 'E', label: '' },
                 { source: 'D', target: 'F', label: '' },
-                { source: 'F', target: 'G', label: 'YES' },
-                { source: 'F', target: 'H', label: 'NO' },
+                { source: 'F', target: 'G', label: '예' },
+                { source: 'F', target: 'H', label: '아니요' },
                 { source: 'G', target: 'I', label: '' },
                 { source: 'H', target: 'J', label: '' },
                 { source: 'J', target: 'K', label: '' },
