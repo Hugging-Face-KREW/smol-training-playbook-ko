@@ -1,9 +1,9 @@
 ---
-title: 'The Smol Training Playbook:<br/> The Secrets to Building World-Class LLMs'
+title: 'The Smol Training Playbook:<br/> 고성능 LLM을 만드는 노하우'
 subtitle: >-
-  A practical journey through the challenges, decisions, and messy reality
-  behind training state-of-the-art language models
-description: 'The Smol Training Playbook: The Secrets to Building World-Class LLMs'
+  어려운 문제와 여러 선택, 복잡한 현실을 짚어 보며
+  최첨단 언어 모델의 실제 학습 과정을 따라갑니다
+description: 'The Smol Training Playbook: 고성능 LLM을 만드는 노하우'
 authors:
   - name: Loubna Ben Allal
 
@@ -111,80 +111,80 @@ import lstopo_29c1384e_bcac_80c9_9715_cbfe9e73d86b from './assets/image/lstopo_2
 import image_2891384e_bcac_80e2_9cc5_c2c46c7ab39b from './assets/image/image_2891384e-bcac-80e2-9cc5-c2c46c7ab39b.png';
 import image_27d1384e_bcac_80b1_9ffb_ec29d0021ccc from './assets/image/image_27d1384e-bcac-80b1-9ffb-ec29d0021ccc.png';
 
-## Introduction
+## 들어가며
 
-What does it actually take to train a high-performance LLM today?
-
-<Sidenote>
-
-Reading time: 2-4 days.
-</Sidenote>
-
-Published research makes it look straightforward: strategic architecture choices, carefully curated datasets, and sufficient compute. The results are polished, the ablations are structured and clean. Every decision seems obvious in hindsight. But those reports only show what worked and apply a bit of rosy retrospection—they don't capture the 2 a.m. dataloader debugging sessions, the loss spikes, or the subtle tensor parallelism bug (see later!) that quietly sabotages your training. The reality is messier, more iterative, and full of decisions that don't make it into the final paper.
-
-Join us as we look behind the scenes of training [SmolLM3](https://huggingface.co/HuggingFaceTB/SmolLM3-3B), a 3B-parameter multilingual reasoning model trained on 11T tokens. This is not an ordinary guide, but rather the untangling of a spiderweb of decisions, discoveries, and dead ends that led to deep insights into what it takes to build world-class language models.
-
-It is also the final opus in our long-form model training series. We've worked through building datasets at scale ([FineWeb](https://huggingface.co/spaces/HuggingFaceFW/blogpost-fineweb-v1)), orchestrating thousands of GPUs to sing in unison ([The Ultra-Scale Playbook](https://huggingface.co/spaces/nanotron/ultrascale-playbook)), and selecting the best evaluations at each step of the process ([The LLM Evaluation Guidebook](https://github.com/huggingface/evaluation-guidebook)). Now we're putting it all together to build a strong AI model. We'll walk you through the complete journey—not just the final recipe that worked, but the failures, infrastructure breakdowns, and debugging processes that shaped every decision. You'll see how promising small-scale ablations sometimes don't translate at scale; why we restarted a training run after 1T tokens; how we balanced the competing objectives of multilinguality, math, and code while maintaining strong English-language performance; and finally how we post-trained a hybrid reasoning model.
-
-We've tried to avoid just listing everything we did in favor of presenting an organized story about our adventure. Think of this as a guide for anyone trying to go from "we have a great dataset and GPUs" to "we built a really strong model." We hope being this open will help close the gap between research and production, and make your next training run a little less chaotic. 
-
-### How to Read This Guide
-
-You don't need to read the whole guide from start to finish, and at this point it's too long to realistically read end to end in one sitting anyway. It's structured into several distinct pieces, any of which can be skipped or read individually:
-
--  **Training compass:**  A high-level discussion about whether you should pretrain your own model. We walk you through fundamental questions to ask yourself before burning through all your VC money, and how to think systematically through the decision process. This is a high-level section; if you want to skip straight to the technical content, that's fine.
--  **Pretraining:** The sections following the training compass cover everything you need to know to build a solid recipe for your own pretraining run: how to run ablations, select evaluations, mix data sources, make architecture choices, tune hyperparameters, and finally endure the training marathon. This section is also relevant if you're not planning to pretrain from scratch but are interested in continued pretraining (aka mid-training).
--  **Post-training:** In this part of the guide you'll learn all the tricks needed to get most out of your pretrained models. We'll cover the whole post-training alphabet, starting with SFT, DPO, and GRPO, as well as the dark arts and alchemy of model merging. Most of the knowledge about making these algorithms work well is learned through painful lessons, and we'll share our experience here to hopefully spare you some of them.
--  **Infrastructure:** If pretraining is the cake and post-training is the icing and cherry on top, then infrastructure is the industrial-grade oven. Without it, nothing happens, and if it's broken, your happy Sunday baking session turns into a fire hazard. Knowledge about how to understand, analyze, and debug GPU clusters is scattered across the internet in various libraries, docs, and forums. This section walks through GPU layout, communication patterns between CPU/GPU/nodes/storage, and how to identify and overcome bottlenecks. 
-
-So where do we even start? Pick the section that you find most exciting and let's go!
+오늘날 고성능 LLM을 학습하려면 실제로 무엇이 필요할까요?
 
 <Sidenote>
 
-If you have questions or remarks, open a discussion on the <a href="https://huggingface.co/spaces/HuggingFaceTB/smol-training-playbook/discussions">Community tab</a>!
+읽는 데 걸리는 시간: 2-4일.
 </Sidenote>
 
-## Training Compass: Why → What → How
+논문만 보면 LLM 학습은 간단해 보입니다. 아키텍처를 잘 고르고, 데이터셋을 꼼꼼히 선별하고, 연산 자원을 충분히 확보하면 됩니다. 결과도 깔끔하게 정리되어 있고 어블레이션(ablation)도 체계적입니다. 지나고 보면 그때의 결정이 모두 당연해 보입니다. 논문에는 성공한 결과만 담기고, 지난 과정도 실제보다 조금은 좋게 그려집니다. 하지만 논문에는 새벽 2시에 데이터 로더를 디버깅하며 겪은 고생까지 나오지는 않습니다. 손실이 갑자기 치솟거나, 알아채기 어려운 텐서 병렬화 버그 때문에 학습이 망가진 일도 빠집니다(뒤에서 다룹니다!). 실제로는 훨씬 복잡한 상황에서 여러 번 시도하고 고쳐야 합니다. 그 과정에서 내린 결정 중에는 최종 논문에 실리지 않는 것도 많습니다.
+
+11T 토큰으로 학습한 3B 파라미터 다국어 추론 모델 [SmolLM3](https://huggingface.co/HuggingFaceTB/SmolLM3-3B)의 학습 뒷이야기를 함께 살펴보겠습니다. 일반적인 안내서와는 조금 다릅니다. 고성능 언어 모델을 만드는 데 무엇이 필요한지 알아가는 동안 여러 결정과 발견, 실패가 복잡하게 얽혔습니다. 그 과정을 하나씩 풀어 보려 합니다.
+
+이 글은 모델 학습을 다룬 장문 시리즈의 마지막 편이기도 합니다. 우리는 대규모 데이터셋 구축([FineWeb](https://huggingface.co/spaces/HuggingFaceFW/blogpost-fineweb-v1)), 수천 개의 GPU를 한목소리로 노래하게 만드는 방법([The Ultra-Scale Playbook](https://huggingface.co/spaces/nanotron/ultrascale-playbook)), 각 단계에 가장 적합한 평가를 고르는 방법([The LLM Evaluation Guidebook](https://github.com/huggingface/evaluation-guidebook))을 다뤘습니다. 이제 이 내용을 종합해 성능 좋은 AI 모델을 만들어 봅니다. 최종적으로 성공한 학습 방법뿐 아니라, 그 방법을 정하기까지 겪은 실패와 인프라 장애, 디버깅 과정도 다룹니다. 유망했던 소규모 어블레이션 결과가 규모를 키우면 통하지 않기도 하는 이유, 1T 토큰을 학습한 뒤 처음부터 다시 시작한 이유, 영어 성능을 높게 유지하면서 다국어·수학·코드라는 서로 경쟁하는 목표 사이에서 균형을 맞춘 방법, 마지막으로 하이브리드 추론 모델을 사후 학습한 방법을 살펴봅니다.
+
+우리가 한 일을 나열하는 데 그치지 않고, 실제로 어떤 과정을 거쳤는지 순서 있게 풀어내려 했습니다. “좋은 데이터셋과 GPU가 있다”에서 “정말 강력한 모델을 만들었다”로 나아가려는 모든 분을 위한 안내서라고 생각해 주세요. 이 이야기가 연구 결과를 실제 서비스에 적용하는 데 도움이 되고, 여러분의 다음 학습에서 겪을 혼란도 조금 줄여 주기를 바랍니다.
+
+### 이 가이드를 읽는 방법
+
+처음부터 끝까지 모두 읽을 필요는 없습니다. 이제는 분량도 많아 한 번에 다 읽기 어렵습니다. 가이드는 몇 개의 독립적인 부분으로 구성되어 있어, 각 부분을 건너뛰거나 따로 읽어도 됩니다.
+
+-  **학습 나침반:** 모델을 직접 사전 학습해야 하는지 큰 틀에서 논의합니다. 벤처 투자금을 모두 쓰기 전에 스스로 확인해야 할 질문을 짚고, 차근차근 판단하는 방법을 살펴봅니다. 전체 방향을 다루는 부분이므로 기술적인 내용으로 바로 넘어가셔도 됩니다.
+-  **사전 학습:** 학습 나침반 다음에는 탄탄한 사전 학습 방법을 마련하는 데 필요한 내용을 모두 다룹니다. 어블레이션을 수행하고, 평가를 고르고, 데이터를 섞고, 아키텍처를 정하고, 하이퍼파라미터를 조정하는 방법부터 마지막 학습 마라톤을 견디는 방법까지 살펴봅니다. 처음부터 사전 학습할 계획이 없더라도, 사전 학습을 이어 하는 방법(중간 학습, mid-training)에 관심이 있다면 도움이 됩니다.
+-  **사후 학습:** 사전 학습된 모델의 능력을 최대한 끌어내는 데 필요한 요령을 배웁니다. SFT, DPO, GRPO를 비롯해 여러 약어로 불리는 사후 학습 기법부터 모델 병합이라는 비술과 연금술까지 다룹니다. 이런 알고리즘을 잘 쓰는 요령은 대부분 고생하며 배웁니다. 우리가 겪은 일을 공유해 여러분은 같은 고생을 조금이라도 덜 하시기를 바랍니다.
+-  **인프라:** 사전 학습이 케이크이고 사후 학습이 그 위의 아이싱과 체리라면, 인프라는 산업용 오븐입니다. 오븐 없이는 아무것도 만들 수 없고, 고장 나면 즐거운 일요일 베이킹이 화재 사고로 번질 수 있습니다. GPU 클러스터를 이해하고 분석하고 디버깅하는 데 필요한 지식은 여러 라이브러리와 온라인 문서, 포럼에 흩어져 있습니다. 여기서는 GPU 구조, CPU·GPU·노드·스토리지 사이의 통신 패턴, 병목을 찾아 해결하는 방법을 살펴봅니다.
+
+그럼 어디서 시작할까요? 가장 흥미로운 부분을 골라 함께 시작해 봅시다!
+
+<Sidenote>
+
+질문이나 의견이 있다면 <a href="https://huggingface.co/spaces/HuggingFaceTB/smol-training-playbook/discussions">Community 탭</a>에서 토론을 열어 주세요!
+</Sidenote>
+
+## 학습 나침반: 왜 → 무엇을 → 어떻게
 
 
 
 <HtmlEmbed frameless src="/embeds/training-compass.html" />
 
-The field of machine learning has an obsessive relationship with optimization. We fixate on loss curves, model architectures, and throughput; after all, machine learning is fundamentally about optimizing the loss function of a model. Yet before diving into these technical details, there's a more fundamental question that often goes unasked:  *Should we even be training this model?* 
+머신러닝 분야는 최적화에 집착합니다. 손실 곡선과 모델 아키텍처, 처리량에 몰두합니다. 머신러닝 자체가 모델의 손실 함수를 최적화하는 일이니 당연하기도 합니다. 하지만 기술적인 내용을 따지기 전에 먼저 물어야 하는데도 자주 빠뜨리는 질문이 있습니다. *애초에 이 모델을 학습해야 할까요?*
 
-As shown in the following heatmap, the open source AI ecosystem releases world-class models on a nearly daily basis: Qwen, Gemma, DeepSeek, Kimi, Llama 🪦, OLMo, the list grows longer every month. These aren't just research prototypes or toy examples: They're production-grade models covering an astonishing breadth of use cases, from multilingual understanding to code generation and reasoning. Most of them come with permissive licenses and active communities ready to help you use them.
+아래 히트맵에서 보듯, 오픈소스 AI 생태계에서는 거의 매일 최고 수준의 모델이 공개됩니다. Qwen, Gemma, DeepSeek, Kimi, Llama 🪦, OLMo 등 새로운 이름이 매달 늘어납니다. 단순한 연구용 프로토타입이나 장난감 같은 예제가 아닙니다. 다국어 이해부터 코드 생성과 추론까지, 놀라울 만큼 다양한 용도에 실제로 쓸 수 있는 모델입니다. 대부분 허용적인 라이선스로 공개되어 있고, 활용 방법을 함께 고민할 활발한 커뮤니티도 있습니다.
 
 <iframe class="card card--p0" frameborder="0" width="100%" height="600px" src="https://cfahlgren1-model-release-heatmap.hf.space/"/>
 
 
-Which raises an uncomfortable point: Maybe  *you*  *don't need to train your own model*  *.* 
+그렇다면 조금 불편한 이야기를 해야 합니다. 어쩌면 *여러분은* *직접 모델을 학습할 필요가 없을지도 모릅니다.*
 
-This might seem like an odd way to start an "LLM training guide." But many failed training projects didn't fail because of bad hyperparameters or buggy code; they failed because someone decided to train a model they didn't need. So before you commit to training, and dive into  *how*  to execute it, you need to answer two questions:  *Why*  are you training this model?  *What*  model should you train? Without clear answers, you may waste months of compute and engineering time building something the world already has, or worse, something nobody needs.
+“LLM 학습 가이드”를 이렇게 시작하는 게 이상해 보일 수 있습니다. 하지만 많은 학습 프로젝트가 실패한 원인은 나쁜 하이퍼파라미터나 코드 버그가 아니었습니다. 필요하지 않은 모델을 학습하기로 결정했기 때문입니다. 학습을 결심하고 *어떻게* 진행할지 알아보기 전에 두 가지부터 물어보세요. 이 모델을 *왜* 학습하나요? *어떤* 모델을 학습해야 하나요? 답이 명확하지 않으면, 세상에 이미 있는 모델이나 더 나쁘게는 아무도 필요로 하지 않는 모델을 만드는 데 몇 달 치 연산 자원과 개발 시간을 낭비할 수 있습니다.
 
-Let's start with the  *why* , because without understanding your purpose, you can't make coherent decisions about anything that follows.
+먼저 *왜*부터 살펴보겠습니다. 목적을 모르면 이후의 결정을 일관되게 내릴 수 없기 때문입니다.
 
-<Note title="About this section" emoji="📍" variant="info">
+<Note title="이 부분에서 다루는 내용" emoji="📍" variant="info">
 
-This section is different from the rest of this guide: It's less about experiments and technical details,
-more about strategic planning. We'll walk you through deciding <b>whether you need to train from scratch and what model to build</b>.
-If you've already thought deeply about your why and what, 
-feel free to jump to ["Every Big Model Starts with a Small Ablation"](#every-big-model-starts-with-a-small-ablation) for the technical deep dive.
-But if you're uncertain, investing time here may well save you a lot of effort later.
+이 부분은 가이드의 나머지 내용과 다릅니다. 실험이나 기술적 세부 사항보다는
+계획을 세우는 데 더 비중을 둡니다. <b>처음부터 학습해야 하는지, 어떤 모델을 만들지</b> 결정하는 과정을 안내합니다.
+이미 왜, 무엇을 학습할지 깊이 생각해 보았다면,
+기술적인 내용을 다루는 [“모든 큰 모델은 작은 어블레이션에서 시작합니다”](#every-big-model-starts-with-a-small-ablation)로 바로 넘어가셔도 됩니다.
+아직 확신이 없다면, 여기에 시간을 들이는 것만으로도 나중에 많은 수고를 덜 수 있습니다.
 </Note>
 
-###  **Why: The Question Nobody Wants to Answer** 
+###  **왜: 아무도 답하고 싶어 하지 않는 질문**
 
-Let's be blunt about what happens in practice. Someone (if they're lucky) gets access to a GPU cluster, maybe through a research grant, maybe through a company's spare capacity, and the thought process goes roughly like this: "We have 100 H100s for three months. Let's train a model!" The model size gets picked arbitrarily, the dataset gets assembled from whatever's available. Training starts. And six months later, after burning through compute budget and team morale, the resulting model sits unused because nobody ever asked  *why.* 
+실제로 어떤 일이 벌어지는지 솔직히 이야기해 보겠습니다. 누군가 운 좋게 연구 지원금이나 회사의 유휴 자원을 통해 GPU 클러스터를 확보합니다. 그러면 대개 이런 생각이 듭니다. “H100 100개를 세 달 동안 쓸 수 있네. 모델을 학습하자!” 모델 크기는 임의로 정하고, 데이터셋은 구할 수 있는 자료로 모읍니다. 학습을 시작합니다. 여섯 달 뒤에는 연산 예산이 바닥나고 팀의 사기도 꺾입니다. 그렇게 학습한 모델은 아무도 쓰지 않습니다. 누구도 *왜* 학습하는지 묻지 않았기 때문입니다.
 
-Here are some reasons why you shouldn't train a model:
+다음과 같은 이유만으로 모델을 학습해서는 안 됩니다.
 
 <HtmlEmbed frameless src="/embeds/wrong-reasons.html" />
 
 
 
-The allure of "we trained our own model" is powerful, but before investing a lot of time and resources, it makes sense to ask:  **Why do we need to train this model?** 
+“우리가 직접 모델을 학습했다”는 말은 매력적입니다. 하지만 많은 시간과 자원을 쓰기 전에 먼저 물어보세요. **이 모델을 왜 학습해야 할까요?**
 
-The following flowchart guides the thought process one should go through before starting a big pretraining project. From a technical perspective, you should essentially first find out if there's an existing model that you can either prompt or fine-tune to do the job.
+아래 흐름도는 대규모 사전 학습 프로젝트를 시작하기 전에 어떤 순서로 판단해야 하는지 보여 줍니다. 기술적으로는 프롬프트를 작성하거나 미세 조정해서 목적을 달성할 수 있는 기존 모델이 있는지부터 확인해야 합니다.
 
 <HtmlEmbed frameless src="/embeds/train-model-decision-flowchart.html" />
 
@@ -192,272 +192,272 @@ The following flowchart guides the thought process one should go through before 
 
 <Sidenote>
 
-The "why" we discuss is about training from scratch. We don't cover distillation or pruning in this guide. These are valid paths to efficient models but represent different workflows than training from scratch. We recommend NVIDIA's <a href="https://arxiv.org/abs/2408.11796" target="_blank">Minitron paper</a> for an overview of these topics.
+여기서 다루는 “왜”는 처음부터 학습하는 경우에 관한 질문입니다. 이 가이드에서는 증류(distillation)나 가지치기는 다루지 않습니다. 효율적인 모델을 만드는 좋은 방법이지만, 처음부터 학습하는 것과는 작업 과정이 다릅니다. 개요를 살펴보려면 NVIDIA의 <a href="https://arxiv.org/abs/2408.11796" target="_blank">Minitron 논문</a>을 추천합니다.
 </Sidenote>
 
-There are basically three common areas where custom pretraining can make sense: you want to do novel research, you have very specific needs for your production use case, or you want to fill a gap in the open model ecosystem. Let's have a quick look at each. 
+맞춤형 사전 학습이 타당한 경우는 보통 세 가지입니다. 새로운 연구를 하고 싶거나, 실제 서비스에 매우 구체적인 요구 사항이 있거나, 오픈 모델 생태계의 빈틈을 채우려는 경우입니다. 각각 간단히 살펴보겠습니다.
 
-####  **Research: What Do You Want to Understand?** 
+####  **연구: 무엇을 이해하고 싶나요?**
 
-There's plenty of research one can do in the LLM space. What LLM research projects have in common is that you normally start with a clearly defined question:
+LLM 분야에는 연구할 주제가 많습니다. LLM 연구는 대개 분명한 질문 하나에서 시작합니다.
 
-- Can we scale training on this new optimizer to a 10B+ model? (See ["Muon is Scalable for LLM Training."](https://huggingface.co/papers/2502.16982))
-- Can reinforcement learning alone, without supervised fine-tuning (SFT), produce reasoning capabilities? (See ["DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning."](https://huggingface.co/papers/2501.12948)
-- Can we train good small models on purely synthetic textbook data? (See ["Textbooks Are All You Need."](https://huggingface.co/papers/2306.11644))
-- Can we achieve competitive performance by training on only openly licensed data? (See ["The Common Pile v0.1: An 8TB Dataset of Public Domain and Openly Licensed Text."](https://huggingface.co/papers/2506.05209))
+- 이 새로운 옵티마이저로 10B+ 모델까지 학습 규모를 키울 수 있을까요? ([“Muon is Scalable for LLM Training.”](https://huggingface.co/papers/2502.16982) 참고)
+- 지도 미세 조정(SFT) 없이 강화 학습(RL)만으로 추론 능력을 얻을 수 있을까요? ([“DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning.”](https://huggingface.co/papers/2501.12948) 참고
+- 합성 교과서 데이터만으로 성능 좋은 소형 모델을 학습할 수 있을까요? ([“Textbooks Are All You Need.”](https://huggingface.co/papers/2306.11644) 참고)
+- 공개 라이선스 데이터만으로 학습해도 경쟁력 있는 성능을 낼 수 있을까요? ([“The Common Pile v0.1: An 8TB Dataset of Public Domain and Openly Licensed Text.”](https://huggingface.co/papers/2506.05209) 참고)
 
-Making the hypothesis as concrete as possible and thinking about the necessary experiment scale increases the chances of success.
+가설을 최대한 구체적으로 세우고 필요한 실험 규모를 생각하면 성공 가능성을 높일 수 있습니다.
 
-####  **Production: Why Can't You Use an Existing Model?** 
+####  **실제 서비스: 기존 모델을 쓸 수 없는 이유는 무엇인가요?**
 
-There are three main reasons why companies can't use off-the-shelf models for their use cases. Two of them are technical, and the other is due to governance.
+기업이 기존 모델을 그대로 가져다 쓰기 어려운 이유는 크게 세 가지입니다. 두 가지는 기술적인 문제이고, 나머지 하나는 거버넌스 문제입니다.
 
-The first reason to train your own model is  **domain specificity** : when your data or tasks involve highly specialized vocabulary or structure that existing models can't handle well. For example, you might want to train:
+직접 모델을 학습하는 첫 번째 이유는 **도메인 특수성**입니다. 데이터나 과제에 기존 모델이 잘 다루지 못하는 전문 어휘나 구조가 있는 경우입니다. 예를 들어 다음과 같은 모델이 필요할 수 있습니다.
 
-- A DNA model with a unique vocabulary and long-range dependencies
-- A legal or financial model requiring deep familiarity with domain-specific jargon and logic
+- 고유한 어휘와 장거리 의존성을 다루는 DNA 모델
+- 도메인 특유의 전문 용어와 논리를 깊이 이해해야 하는 법률·금융 모델
 
-A second, related reason is  **deployment constraints** : when you need a model tailored to your hardware, latency, or privacy requirements. Examples here might be an LLM running on a drone or an on-prem system with custom hardware, like FPGAs.
+이와 관련된 두 번째 이유는 **배포 제약**입니다. 하드웨어, 지연 시간, 개인정보 보호 요구 사항에 맞춘 모델이 필요한 경우입니다. 드론에서 실행하는 LLM이나 FPGA 같은 맞춤형 하드웨어를 쓰는 온프레미스 시스템이 그 예입니다.
 
-Here's a simple test: Spend a few days building on top of Qwen3, Gemma 3, or another current state-of-the-art (SOTA) model. Can you reach your performance goals through prompting, tool use, or post-training? If not, it's probably time to train your own.
+간단히 확인하는 방법이 있습니다. 며칠 동안 Qwen3, Gemma 3 또는 다른 최신 최고 성능(SOTA) 모델로 원하는 기능을 구현해 보세요. 프롬프팅, 도구 사용, 사후 학습으로 성능 목표를 달성할 수 있나요? 그렇지 않다면 이제는 직접 모델을 학습하는 편이 나을 것입니다.
 
-Even if the post-training budget needed to meet your requirements is immense, it might still be cheaper than starting from scratch. Fine-tuning your model for 1T tokens is more economical than starting from scratch to train for 10T+ tokens.
+요구 사항을 충족하는 데 필요한 사후 학습 예산이 막대하더라도, 처음부터 학습하는 것보다는 저렴할 수 있습니다. 모델을 1T 토큰으로 미세 조정하는 편이 처음부터 10T+ 토큰을 학습하는 것보다 경제적입니다.
 
 <Sidenote>
 
-At this point, LLM trainers start to miraculously call it mid-training 
-instead of post-training.
+이쯤 되면 LLM을 학습하는 사람들은 신기하게도 중간 학습이라는 말을 쓰기 시작합니다.
+사후 학습이라는 말 대신에 말입니다.
 </Sidenote>
 
-The third reason to build your own in-house language model is  **safety and governance** : You need complete control over training data, model behavior, and update cycles because you're in a regulated industry or high-stakes application. You need to know  *exactly*  what went into the model and be able to prove it to regulators. In some cases, you might have no other option than building your own model.
+사내 언어 모델을 만드는 세 번째 이유는 **안전과 거버넌스**입니다. 규제 산업이나 실패의 파급력이 큰 용도에서는 학습 데이터, 모델 동작, 업데이트 주기를 완전히 통제해야 합니다. 모델에 어떤 데이터가 들어갔는지 *정확히* 알고, 규제 기관에도 입증할 수 있어야 합니다. 경우에 따라서는 직접 모델을 만드는 것 외에 선택지가 없을 수 있습니다.
 
-These are the main reasons companies train in-house models—but what about companies or organizations that release open models?
+지금까지 기업이 사내 모델을 학습하는 주된 이유를 살펴봤습니다. 그렇다면 오픈 모델을 공개하는 기업이나 단체는 어떨까요?
 
-####  **Strategic Open Source: Do You See a Gap You Can Fill?** 
+####  **전략적 오픈소스: 채울 수 있는 빈틈이 보이나요?**
 
-One of the most common reasons experienced AI labs release new open models is that they've identified a specific gap or new AI use case in the open source ecosystem.
+경험 많은 AI 연구소가 새로운 오픈 모델을 공개할 때는, 오픈소스 생태계에서 아직 부족한 부분이나 새로운 AI 용도를 발견한 경우가 많습니다.
 
-The pattern typically looks like this: You notice an underexplored area—maybe there are no strong on-device models with very long context, or multilingual models exist but they're weak on low-resource languages, or the field is moving toward interactive world models like [Genie 3](https://deepmind.google/discover/blog/genie-3-a-new-frontier-for-world-models/) and no good open-weight model exists. 
+대개 이런 식입니다. 아직 충분히 탐구되지 않은 영역이 눈에 들어옵니다. 매우 긴 컨텍스트를 지원하는 강력한 온디바이스 모델이 없을 수도 있고, 다국어 모델은 있지만 저자원 언어에 약할 수도 있습니다. 혹은 분야가 [Genie 3](https://deepmind.google/discover/blog/genie-3-a-new-frontier-for-world-models/) 같은 상호작용형 월드 모델로 나아가고 있는데 좋은 오픈 웨이트 모델이 없을 수도 있습니다.
 
-You have reason to believe you can do better; perhaps you've curated better training data, developed better training recipes, or have the compute to overtrain where others couldn't. Your goal is concrete: not "the best model ever," but "the best 3B model for on-device use" or "the first small model with a 1M-token context window."
+더 잘할 수 있다고 생각하는 데도 이유가 있습니다. 더 좋은 학습 데이터를 선별했거나, 더 나은 학습 방법을 개발했거나, 다른 팀보다 더 오래 학습할 연산 자원이 있을 수 있습니다. 목표도 구체적입니다. “역대 최고의 모델”이 아니라 “온디바이스용 최고의 3B 모델”이나 “1M 토큰 컨텍스트 윈도를 갖춘 최초의 소형 모델”입니다.
 
-This is a real goal, and success creates value: Developers adopt your model, it becomes infrastructure for others, or it establishes technical credibility. But success requires experience. You need to know what's actually feasible and how to execute reliably in a competitive space. To make this concrete, let's look at how we think about this question at Hugging Face.
+이런 목표는 구체적이고, 달성했을 때의 가치도 분명합니다. 개발자들이 모델을 사용하거나, 다른 사람이 개발할 때 기반으로 삼거나, 모델을 만든 팀이 기술력을 인정받을 수 있습니다. 하지만 성공에는 경험이 필요합니다. 실제로 어디까지 할 수 있는지, 경쟁 속에서 어떻게 계획대로 완수할지 알아야 합니다. 구체적인 예로, Hugging Face에서는 이 질문을 어떻게 생각하는지 살펴보겠습니다.
 
-####  **Hugging Face's Journey** 
+####  **Hugging Face가 걸어온 길**
 
-So why does Hugging Face train open models? The answer is simple: We build things that are useful to the open source ecosystem and fill gaps that few others are filling.
+Hugging Face는 왜 오픈 모델을 학습할까요? 답은 간단합니다. 오픈소스 생태계에 필요하지만 만드는 곳은 별로 없는 것을 만들기 때문입니다.
 
 <Sidenote>
 
-Although there are millions of open-weight models, there are very few organizations that train fully open models. In addition to Hugging Face, there's [Ai2](https://allenai.org/) and [Stanford's Marin community](https://marin.community/).
+오픈 웨이트 모델은 수백만 개에 이르지만, 완전히 개방된 모델을 학습하는 단체는 매우 적습니다. Hugging Face 외에는 [Ai2](https://allenai.org/)와 [Stanford의 Marin 커뮤니티](https://marin.community/) 등이 있습니다.
 </Sidenote>
 
-This includes datasets, tooling, and training models. Every LLM training project we've started began with noticing a gap and believing we could contribute something meaningful.
+여기에는 데이터셋 구축, 도구 개발, 모델 학습이 포함됩니다. 우리의 모든 LLM 학습 프로젝트는 부족한 부분을 발견하고 우리가 도움이 될 수 있겠다고 생각하면서 시작되었습니다.
 
-We started our first LLM project after GPT-3 [[@gpt3](https://huggingface.co/papers/2005.14165)] was released. At the time, it felt like no one else was building an open alternative, and we were worried that the knowledge would end up locked away in just a few industry labs. So we launched the [BigScience workshop](https://bigscience.huggingface.co/) to train an open version of GPT-3. The resulting model was [BLOOM](https://huggingface.co/bigscience/bloom), created by dozens of contributors who worked for a year to build the training stack, tokenizer, and pretraining corpus to pretrain a 175B-parameter model.
+첫 LLM 프로젝트는 GPT-3 [[@gpt3](https://huggingface.co/papers/2005.14165)]가 공개된 뒤 시작했습니다. 당시에는 누구도 공개 대안을 만들지 않는 것 같았고, 지식이 소수의 기업 연구소에만 갇힐까 걱정했습니다. 그래서 GPT-3의 공개 버전을 학습하기 위해 [BigScience 워크숍](https://bigscience.huggingface.co/)을 시작했습니다. 그 결과가 [BLOOM](https://huggingface.co/bigscience/bloom)입니다. 수십 명의 기여자가 일 년에 걸쳐 학습 스택, 토크나이저, 사전 학습 코퍼스를 구축하고 175B 파라미터 모델을 사전 학습했습니다.
 
-The successor of BLOOM was StarCoder, in 2022 [[@starcoder](https://huggingface.co/papers/2305.06161)]. OpenAI had developed Codex for GitHub Copilot [[@codex](https://huggingface.co/papers/2107.03374)], but it was closed source. Building an open source alternative clearly would provide value to the ecosystem. So, in collaboration with ServiceNow, under the [BigCode](https://huggingface.co/bigcode) umbrella, we built [The Stack](https://huggingface.co/datasets/bigcode/the-stack) dataset, and we trained [StarCoder 15B](https://huggingface.co/bigcode/starcoder) to reproduce Codex. [StarCoder2](https://huggingface.co/collections/bigcode/starcoder2-65de6da6e87db3383572be1a) [[@starcoder2](https://huggingface.co/papers/2402.19173)] came from learning we could have trained longer, and recognizing that smaller models trained for longer might be more valuable than one large model. We trained a family (3B/7B/15B) on multiple trillions of tokens, far beyond what anyone had done for open code models at the time.
+BLOOM의 뒤를 이은 모델은 2022년의 StarCoder [[@starcoder](https://huggingface.co/papers/2305.06161)]였습니다. OpenAI는 GitHub Copilot을 위해 Codex [[@codex](https://huggingface.co/papers/2107.03374)]를 개발했지만, 소스는 공개하지 않았습니다. 오픈소스 대안을 만들면 생태계에 도움이 될 것은 분명했습니다. 그래서 ServiceNow와 협력해 [BigCode](https://huggingface.co/bigcode) 프로젝트 아래 [The Stack](https://huggingface.co/datasets/bigcode/the-stack) 데이터셋을 구축하고, Codex를 재현하고자 [StarCoder 15B](https://huggingface.co/bigcode/starcoder)를 학습했습니다. [StarCoder2](https://huggingface.co/collections/bigcode/starcoder2-65de6da6e87db3383572be1a) [[@starcoder2](https://huggingface.co/papers/2402.19173)]는 기존 모델을 더 오래 학습해도 됐겠다는 생각에서 출발했습니다. 큰 모델 하나보다 작은 모델을 더 오래 학습하는 편이 유용할 수도 있겠다고 봤습니다. 3B/7B/15B 모델군을 수조 토큰으로 학습했는데, 당시 다른 공개 코드 모델의 학습량을 훨씬 넘어섰습니다.
 
-The [SmolLM family](https://huggingface.co/HuggingFaceTB) followed a similar pattern. We noticed there were very few strong small models, and we had just built [FineWeb-Edu](https://huggingface.co/datasets/HuggingFaceFW/fineweb-edu) [@fineweb], which was a strong pretraining dataset. [SmolLM](https://huggingface.co/collections/HuggingFaceTB/smollm-6695016cad7167254ce15966) (135M/360M/1.7B) was our first version. [SmolLM2](https://huggingface.co/collections/HuggingFaceTB/smollm2-6723884218bcda64b34d7db9) [@smollm2] focused on better data and training longer, reaching SOTA performance on multiple fronts. [SmolLM3](https://huggingface.co/HuggingFaceTB/SmolLM3-3B) scaled to 3B parameters while adding hybrid reasoning, multilinguality, and long context, features that the community values in 2026.
+[SmolLM 모델군](https://huggingface.co/HuggingFaceTB)도 비슷한 흐름으로 탄생했습니다. 성능 좋은 소형 모델이 거의 없었고, 마침 좋은 사전 학습 데이터셋인 [FineWeb-Edu](https://huggingface.co/datasets/HuggingFaceFW/fineweb-edu) [@fineweb]를 구축한 참이었습니다. 첫 버전은 [SmolLM](https://huggingface.co/collections/HuggingFaceTB/smollm-6695016cad7167254ce15966)(135M/360M/1.7B)이었습니다. [SmolLM2](https://huggingface.co/collections/HuggingFaceTB/smollm2-6723884218bcda64b34d7db9) [@smollm2]는 더 좋은 데이터로 더 오래 학습하는 데 집중해 여러 측면에서 SOTA 성능을 달성했습니다. [SmolLM3](https://huggingface.co/HuggingFaceTB/SmolLM3-3B)는 파라미터를 3B로 늘리면서 하이브리드 추론, 다국어, 긴 컨텍스트를 추가했습니다. 2026년 커뮤니티가 중요하게 여기는 기능들입니다.
 
-This pattern extends beyond pretraining: We trained [Zephyr](https://huggingface.co/HuggingFaceH4/zephyr-7b-alpha) [@zephyr] to show Direct Preference Optimization (DPO) works at scale, started [Open-R1](https://github.com/huggingface/open-r1) to reproduce DeepSeek-R1's distillation pipeline, and released [OlympicCoder](https://huggingface.co/open-r1/OlympicCoder-7B) for competitive programming, with SOTA performance in the International Olympiad in Informatics. We've also explored other modalities with [SmolVLM](https://huggingface.co/collections/HuggingFaceTB/smolvlm-6740bd584b2dcbf51ecb1f39) [@smolvlm] for vision and [SmolVLA](https://huggingface.co/lerobot/smolvla_base) [@smolvla] for robotics.
+사전 학습 외의 프로젝트도 비슷한 이유로 시작했습니다. 직접 선호 최적화(DPO)가 대규모에서도 효과적임을 보여 주기 위해 [Zephyr](https://huggingface.co/HuggingFaceH4/zephyr-7b-alpha) [@zephyr]를 학습했고, DeepSeek-R1의 증류 파이프라인을 재현하기 위해 [Open-R1](https://github.com/huggingface/open-r1)을 시작했습니다. 프로그래밍 대회용으로 공개한 [OlympicCoder](https://huggingface.co/open-r1/OlympicCoder-7B)는 국제정보올림피아드에서 SOTA 성능을 보였습니다. 시각 분야의 [SmolVLM](https://huggingface.co/collections/HuggingFaceTB/smolvlm-6740bd584b2dcbf51ecb1f39) [@smolvlm], 로보틱스 분야의 [SmolVLA](https://huggingface.co/lerobot/smolvla_base) [@smolvla]로 다른 모달리티도 탐구했습니다.
 
 <Sidenote>
 
-If you're curious about the HF science projects,
-you can find an overview here <a href="https://huggingface.co/science" target="_blank">https://huggingface.co/science</a>
+HF의 과학 연구 프로젝트가 궁금하다면,
+<a href="https://huggingface.co/science" target="_blank">https://huggingface.co/science</a>에서 개요를 볼 수 있습니다.
 </Sidenote>
 
-Hopefully, this section has convinced you that there is value in thinking deeply about why you want to train a model.
+여기까지 읽고 모델을 왜 학습하려는지 깊이 생각해 볼 만하다고 느끼셨으면 좋겠습니다.
 
-For the rest of this guide, we'll assume you've done this soul searching and have a legitimate reason to train.
+이제부터는 충분히 고민했고 학습할 이유도 분명하다고 가정하겠습니다.
 
-### What: Translating Goals into Decisions
+### 무엇을: 목표를 구체적인 결정으로 옮기기
 
-Now that you know  *why*  you're training,  *what*  should you train? By "what," we mean the model type (dense, mixture of experts, hybrid, something new), model size, architecture details, and data mixture. Once you've settled on the why, you can derive the what. For example:
+*왜* 학습하는지 알았다면, 이제 *무엇을* 학습해야 할까요? 여기서 “무엇을”은 모델 유형(밀집 모델, 전문가 혼합, 하이브리드, 새로운 유형), 모델 크기, 아키텍처 세부 사항, 데이터 혼합을 뜻합니다. 왜 학습할지 정하고 나면 무엇을 학습할지도 구체화할 수 있습니다. 예를 들면 다음과 같습니다.
 
-- Fast model for on-device → small efficient model
-- Multilingual model → large tokenizer vocab
-- Super long context → hybrid architecture
+- 빠른 온디바이스 모델 → 작고 효율적인 모델
+- 다국어 모델 → 어휘 집합이 큰 토크나이저
+- 매우 긴 컨텍스트 → 하이브리드 아키텍처
 
-Besides decisions driven by the use case, there are also some choices that optimize the training itself, by being more stable, more sample efficient, or faster. These decisions are not always so clear-cut, but you can divide the decision process into roughly these phases:
+용도에 맞추는 것 외에 학습을 더 안정적으로, 더 적은 샘플로, 더 빠르게 진행하기 위한 선택도 있습니다. 항상 답이 뚜렷하지는 않지만, 대략 다음 순서로 판단할 수 있습니다.
 
--  **Planning:**  Before running experiments, map your use case to the components you need to decide on. Your deployment environment determines model size constraints. Your timeline determines which architectural risks you can take. Your target capabilities determine dataset requirements. This phase is about connecting each constraint from your "why" to concrete specifications in your "what."
--  **Validation:**  Once you have a starting point and a list of potential modifications, test systematically. Since testing is expensive, focus on changes that could meaningfully improve performance for your use case or optimize your training. This is where ablations, covered in ["Every Big Model Starts with a Small Ablation,"](#every-big-model-starts-with-a-small-ablation) come in.
+-  **계획:** 실험 전에 용도를 바탕으로 결정해야 할 구성 요소를 정리합니다. 배포 환경에 따라 모델 크기의 제약이 정해집니다. 일정에 따라 아키텍처에서 감수할 수 있는 위험이 정해집니다. 목표 능력에 따라 데이터셋 요구 사항이 정해집니다. “왜”를 따지며 확인한 제약을 “어떤 모델을 만들지” 정하는 구체적인 기준으로 바꾸는 단계입니다.
+-  **검증:** 출발점과 변경 후보 목록을 정했다면 체계적으로 시험합니다. 시험에는 비용이 많이 들므로, 용도에 맞는 성능을 의미 있게 높이거나 학습을 최적화할 수 있는 변경에 집중합니다. 이때 [“모든 큰 모델은 작은 어블레이션에서 시작합니다”](#every-big-model-starts-with-a-small-ablation)에서 다루는 어블레이션이 필요합니다.
 
-<Note title="Learn to identify what's worth testing, not just how to run tests." emoji="📍" variant="info">
+<Note title="어떻게 실험할지뿐 아니라 무엇을 실험할지도 잘 골라야 합니다." emoji="📍" variant="info">
 
-Perfect ablations on irrelevant choices waste as much compute as sloppy ablations on important ones.
+중요하지 않은 선택을 완벽하게 검증하는 어블레이션도, 중요한 선택을 허술하게 검증하는 어블레이션만큼 연산 자원을 낭비합니다.
 </Note>
 
-In the following chapters, you will learn about all the options you have to define your model and how to narrow down the choices with systematic experiments. Before going there, we want to share a few learnings on how to set up teams and projects that we've gained from training our own models as well as observing other amazing teams building great LLMs. 
+이어지는 장에서는 모델을 설계할 때의 선택지를 살펴보고, 체계적인 실험으로 좁혀 가는 방법을 배웁니다. 그 전에 팀과 프로젝트를 어떻게 꾸릴지 이야기하겠습니다. 직접 모델을 학습하고 다른 훌륭한 팀의 LLM 개발을 지켜보며 배운 내용입니다.
 
-### Superpower: Speed and Data
+### 강력한 무기: 속도와 데이터
 
-Of course, there are many ways to get to Rome, but we've found that what consistently sets successful LLM training teams apart is  *iteration speed* . Training LLMs is really a learning-by-doing discipline: The more often you train, the better your team will become. So, between the teams that train a model per year and the ones that train one per quarter, the latter will improve much faster. You can look at the teams from Qwen and DeepSeek for examples. Now household names, they have a long track record of consistently releasing new models on a fast cadence.
+물론 로마로 가는 길은 많습니다. 하지만 LLM 학습에 성공하는 팀들은 하나같이 *반복 속도*가 빨랐습니다. LLM 학습은 실제로 해 보며 배우는 분야입니다. 학습을 자주 할수록 팀은 더 능숙해집니다. 따라서 일 년에 모델 하나를 학습하는 팀보다 분기마다 하나를 학습하는 팀이 훨씬 빠르게 발전합니다. Qwen과 DeepSeek 팀이 그 예입니다. 이제는 누구나 아는 이름이 되었지만, 오랫동안 빠른 주기로 새 모델을 꾸준히 공개해 왔습니다.
 
-Besides iteration speed, by far the most influential aspect of LLM training is  *data curation* . There's a natural tendency to dive into architecture choices to improve the model, but the teams that excel in LLM training are the ones that are obsessed with high-quality data more than anything else. 
+반복 속도 외에 LLM 학습에 단연 큰 영향을 주는 요소는 *데이터 선별*입니다. 모델을 개선하려고 아키텍처부터 파고들기 쉽지만, LLM 학습을 잘하는 팀은 무엇보다 고품질 데이터에 집착합니다.
 
-Another aspect that is tied to iteration speed is  *team size* . For the main pretraining tasks, you only need a handful of people equipped with enough compute to execute. To pretrain a model like Llama 3 today, you probably only need two or three people. Once you start to venture into more diverse trainings and downstream tasks (multimodal, multilingual, post-training, etc.), you will need to add a few more people to excel at each domain. 
+*팀 규모*도 반복 속도와 맞물려 있습니다. 주요 사전 학습 작업은 충분한 연산 자원과 소수의 인원으로 할 수 있습니다. 오늘날 Llama 3 같은 모델을 사전 학습하는 데는 아마 두세 명이면 충분할 것입니다. 더 다양한 학습과 후속 과제(멀티모달, 다국어, 사후 학습 등)로 확장하면 각 분야에서 뛰어난 성과를 내기 위해 인원을 조금 더 늘려야 합니다.
 
-So, start with a small, well-equipped team and build a new model every two or three months, and within a short amount of time you'll climb to the top. The rest of this guide will focus on the technical day-to-day activities of this team!
+그러니 필요한 자원을 갖춘 작은 팀으로 시작해 두세 달마다 새 모델을 만들어 보세요. 짧은 시간 안에 정상에 오를 수 있을 것입니다. 이제부터는 이 팀이 매일 하는 기술적인 작업을 다루겠습니다!
 
-## Every Big Model Starts with a Small Ablation
+## 모든 큰 모델은 작은 어블레이션에서 시작합니다
 
-Before we can start training an LLM, we need to make many decisions that will shape the model's performance and training efficiency. Which architecture will best serve our use case? What optimizer and learning rate schedule should we use, and which data sources should we mix in?
+LLM을 학습하기 전에 모델 성능과 학습 효율을 좌우할 여러 결정을 내려야 합니다. 우리 용도에는 어떤 아키텍처가 가장 적합할까요? 어떤 옵티마이저와 학습률 스케줄을 써야 하고, 어떤 데이터 소스를 섞어야 할까요?
 
-How these decisions are made is a frequently asked question. People sometimes expect that they require deep thought. And while strategic thinking is essential—as we covered in the [previous section](#training-compass-why--what--how)—reasoning alone isn't enough. Things are not always intuitive with LLMs, and hypotheses about what should work sometimes don't pan out in practice.
+이런 결정을 어떻게 내리는지는 자주 받는 질문입니다. 오래 깊이 고민해서 결정한다고 생각하는 분도 있습니다. [앞부분](#training-compass-why--what--how)에서 다뤘듯 전략적으로 생각해야 하지만, 머리로 따져 보는 것만으로는 충분하지 않습니다. LLM은 항상 직관대로 작동하지 않으며, 잘될 것이라는 가설이 실제로는 맞지 않을 때도 있습니다.
 
-For example, using what seems like "the highest-quality data" doesn't always yield stronger models. Take [arXiv](https://arxiv.org/) for example, which is a vast collection of humanity's scientific knowledge. Intuitively, training on such rich STEM data should produce superior models, right? In practice, it doesn't, especially for smaller models, where it can even hurt performance [@grpo]. Why? While arXiv papers are full of knowledge, they're highly specialized and written in a narrow academic style that's quite different from the diverse, general text that models learn best from.
+예를 들어 “가장 품질이 좋아 보이는 데이터”를 쓴다고 반드시 더 강력한 모델을 얻는 것은 아닙니다. 인류의 과학 지식을 방대하게 모아 놓은 [arXiv](https://arxiv.org/)를 생각해 보세요. 직관적으로는 이렇게 풍부한 과학·기술·공학·수학(STEM) 데이터로 학습하면 더 뛰어난 모델이 나와야 할 것 같지 않나요? 실제로는 그렇지 않으며, 특히 작은 모델에서는 오히려 성능이 떨어질 수도 있습니다 [@grpo]. 왜일까요? arXiv 논문에는 지식이 풍부하지만 내용이 매우 전문적이고 특정한 학술 문체로 쓰여 있어, 모델이 가장 잘 학습하는 다양하고 일반적인 텍스트와는 상당히 다르기 때문입니다.
 
-So, how can we know what works if staring at the problem long and hard doesn't help? We run a lot of experiments, like good empiricists! Machine learning is not pure math, but actually very much an experimental science.
+오래 깊이 고민하는 것만으로 해결되지 않는다면 무엇이 효과적인지 어떻게 알 수 있을까요? 경험을 중시하는 연구자답게 실험을 많이 해 봅니다! 머신러닝은 순수 수학보다는 실험 과학에 훨씬 가깝습니다.
 
 <Sidenote>
 
-In many ways, machine learning resembles thermodynamics before the discovery of statistical mechanics: We have reliable empirical laws and design principles that work remarkably well, even if deeper theoretical explanations are still emerging.
+여러 면에서 머신러닝은 통계역학이 발견되기 전의 열역학과 닮았습니다. 더 깊은 이론적 설명은 아직 발전하는 중이지만, 놀라울 만큼 잘 작동하는 믿을 만한 경험 법칙과 설계 원칙이 있습니다.
 </Sidenote>
 
-Since those experiments will guide many of our crucial decisions, it's really important to set them up well. There are essentially two main attributes we want from them:
+중요한 결정을 실험 결과에 따라 내릴 것이므로, 실험부터 제대로 설계해야 합니다. 특히 다음 두 가지가 필요합니다.
 
-1.  **Speed:** They should run as fast as possible so we can iterate often. The more ablations we can run, the more hypotheses we can test. 
-1.  **Reliability:** They should provide strong discriminative power. If the metrics we look at can't meaningfully distinguish between different setups early on, our ablations may reveal little (and if they're noisy, we risk chasing noise!). For more details, check out our [blog post](https://huggingface.co/spaces/HuggingFaceFW/blogpost-fine-tasks) on scaling FineWeb to 1000+ languages.
+1.  **속도:** 실험을 자주 반복할 수 있도록 최대한 빠르게 실행되어야 합니다. 어블레이션을 많이 할수록 더 많은 가설을 검증할 수 있습니다.
+1.  **신뢰성:** 설정 간 차이를 뚜렷하게 구별할 수 있어야 합니다. 초반 지표에서 설정에 따른 차이가 뚜렷이 나타나지 않으면 어블레이션으로 얻는 정보가 별로 없을 수 있습니다. 지표에 노이즈가 많다면 노이즈를 쫓게 될 위험도 있습니다! 자세한 내용은 FineWeb을 1000개 이상의 언어로 확장한 [블로그 글](https://huggingface.co/spaces/HuggingFaceFW/blogpost-fine-tasks)을 참고하세요.
 
 
 
-But before we can set up our ablations, we need to make some foundational choices about architecture type and model size. These decisions—guided by our compass—impact which training framework to use, how to allocate our compute budget, and which baseline to start from.
+하지만 어블레이션을 설계하기 전에 아키텍처 유형과 모델 크기에 관한 기본적인 선택을 해야 합니다. 학습 나침반에 따라 이 두 가지를 정하면, 어떤 학습 프레임워크를 쓸지, 연산 예산을 어떻게 나눌지, 어떤 베이스라인에서 시작할지도 달라집니다.
 
-For SmolLM3, we went with a dense Llama-style architecture at 3B parameters because we were targeting small on-device models. But as you'll see in ["Designing the Model Architecture,"](#designing-the-model-architecture) a mixture of experts (MoE) or hybrid model might be better suited for your use case, and different model sizes come with different trade-offs. We'll explore these choices in depth later, and show you how to make these decisions. For now, let's start with the most practical first step: choosing your baseline.
+SmolLM3는 소형 온디바이스 모델을 목표로 했기 때문에 3B 파라미터의 Llama 계열 밀집 아키텍처를 선택했습니다. 하지만 [“모델 아키텍처 설계하기”](#designing-the-model-architecture)에서 살펴보듯, 여러분의 용도에는 전문가 혼합(MoE)이나 하이브리드 모델이 더 적합할 수 있으며 모델 크기에 따라서도 장단점이 달라집니다. 이 선택지들은 뒤에서 자세히 살펴보고 결정하는 방법도 안내하겠습니다. 지금은 가장 실용적인 첫 단계인 베이스라인 선택부터 시작해 봅시다.
 
-###  **Choosing Your Baseline** 
+###  **베이스라인 선택하기**
 
-Every successful model builds on a proven foundation and modifies it for its needs. When Qwen trained their first model family [@qwen1], they started from Llama's architecture. When Meta trained Llama 3, they started from Llama 2. Kimi K2 started from DeepSeek-V3's MoE architecture. This applies not only to architectures, but also to training hyperparameters and optimizers.
+성공적인 모델은 모두 검증된 기반에서 출발해 필요에 맞게 수정합니다. Qwen이 첫 모델군 [@qwen1]을 학습할 때는 Llama 아키텍처에서 시작했습니다. Meta는 Llama 3를 학습할 때 Llama 2에서 출발했습니다. Kimi K2는 DeepSeek-V3의 MoE 아키텍처에서 시작했습니다. 아키텍처뿐 아니라 학습 하이퍼파라미터와 옵티마이저도 마찬가지입니다.
 
-Why? Designing good architectures and training setups takes years of iteration across many organizations. The standard transformer and optimizers like Adam have been refined through thousands of experiments. People have found their failure modes, debugged instabilities, optimized implementations. Starting from a proven foundation means inheriting all that accumulated knowledge. Starting fresh means rediscovering every problem yourself.
+왜일까요? 좋은 아키텍처와 학습 설정은 여러 조직이 수년간 실험하고 고치면서 만들어집니다. 표준 트랜스포머와 Adam 같은 옵티마이저는 수천 번의 실험으로 다듬어졌습니다. 사람들이 실패하는 조건을 찾아내고, 불안정성을 디버깅하고, 구현을 최적화했습니다. 검증된 기반에서 시작하면 이렇게 쌓인 지식을 그대로 활용할 수 있습니다. 새로 시작하면 모든 문제를 직접 다시 발견해야 합니다.
 
-To make a good starting point, an architecture should:
+좋은 출발점이 되려면 아키텍처는 다음 조건을 충족해야 합니다.
 
--  **Match your constraints** , aligning with your deployment target and use case
--  **Be proven at scale**  (demonstrated in multi-trillion-token runs at similar or larger sizes)
--  **Be well-documented** , with known hyperparameters that have been proven to work in open models
--  **Have good framework support**  (ideally, it should be supported in the training frameworks you are considering and the inference frameworks you are planning to use)
+-  **제약에 부합해야 합니다.** 배포 대상과 용도에 맞아야 합니다.
+-  **대규모에서 검증되어야 합니다.** 비슷하거나 더 큰 모델 크기로 수조 토큰을 학습한 이력이 있어야 합니다.
+-  **문서가 잘 갖춰져 있어야 합니다.** 오픈 모델에서 효과가 입증된 하이퍼파라미터가 알려져 있어야 합니다.
+-  **프레임워크 지원이 좋아야 합니다.** 이상적으로는 검토 중인 학습 프레임워크와 사용할 추론 프레임워크에서 모두 지원해야 합니다.
 
-Here's a non-exhaustive list of strong 2025 baseline options for various architectures and model sizes, at the time of writing (early 2026):
+아래는 집필 시점(2026년 초)을 기준으로, 여러 아키텍처와 모델 크기에서 좋은 출발점이 될 만한 2025년 모델 중 일부입니다.
 
-| Architecture Type | Model Family | Sizes |
+| 아키텍처 유형 | 모델군 | 크기 |
 | --- | --- | --- |
-| **Dense** | [Llama 3.1](https://huggingface.co/collections/meta-llama/llama-31-669fc079a0c406a149a5738f) | 8B, 70B |
-| **Dense** | [Llama 3.2](https://huggingface.co/collections/meta-llama/llama-32-66f448ffc8c32f949b04c8cf) | 1B, 3B |
-| **Dense** | [Qwen3](https://huggingface.co/collections/Qwen/qwen3-67dd247413f0e2e4f653967f) | 0.6B, 1.7B, 4B, 14B, 32B |
-| **Dense** | [Gemma 3](https://huggingface.co/collections/google/gemma-3-release-67c6c6f89c4f76621268bb6d) | 12B, 27B |
-| **Dense** | [SmolLM2](https://huggingface.co/collections/HuggingFaceTB/smollm2-6723884218bcda64b34d7db9), [SmolLM3](https://huggingface.co/HuggingFaceTB/SmolLM3-3B) | 135M, 360M, 1.7B, 3B |
+| **밀집** | [Llama 3.1](https://huggingface.co/collections/meta-llama/llama-31-669fc079a0c406a149a5738f) | 8B, 70B |
+| **밀집** | [Llama 3.2](https://huggingface.co/collections/meta-llama/llama-32-66f448ffc8c32f949b04c8cf) | 1B, 3B |
+| **밀집** | [Qwen3](https://huggingface.co/collections/Qwen/qwen3-67dd247413f0e2e4f653967f) | 0.6B, 1.7B, 4B, 14B, 32B |
+| **밀집** | [Gemma 3](https://huggingface.co/collections/google/gemma-3-release-67c6c6f89c4f76621268bb6d) | 12B, 27B |
+| **밀집** | [SmolLM2](https://huggingface.co/collections/HuggingFaceTB/smollm2-6723884218bcda64b34d7db9), [SmolLM3](https://huggingface.co/HuggingFaceTB/SmolLM3-3B) | 135M, 360M, 1.7B, 3B |
 | **MoE** | [Qwen3 MoE](https://huggingface.co/collections/Qwen/qwen3-67dd247413f0e2e4f653967f) | 30B-A3B, 235B-A122B |
 | **MoE** | [gpt-oss](https://huggingface.co/collections/openai/gpt-oss-68911959590a1634ba11c7a4) | 21B-A3B, 117B-A5B |
 | **MoE** | [Kimi Moonlight](https://huggingface.co/moonshotai/Moonlight-16B-A3B-Instruct) | 16B-A3B |
 | **MoE** | [Kimi K2](https://huggingface.co/collections/moonshotai/kimi-k2-6871243b990f2af5ba60617d) | 1T-A32B |
 | **MoE** | [DeepSeek-V3](https://huggingface.co/deepseek-ai/DeepSeek-V3) | 671B-A37B |
-| **Hybrid** | [Zamba2](https://huggingface.co/Zyphra/models?search=zamba2) | 1.2B, 2.7B, 7B |
-| **Hybrid** | [Falcon-H1](https://huggingface.co/collections/tiiuae/falcon-h1-6819f2795bc406da60fab8df) | 0.5B, 1.5B, 3B, 7B, 34B |
-| **MoE + hybrid** | [Qwen3-Next](https://huggingface.co/Qwen/Qwen3-Next-80B-A3B-Instruct) | 80B-A3B |
-| **MoE + hybrid** | [MiniMax-01](https://huggingface.co/MiniMaxAI/MiniMax-Text-01) | 456B-A46B |
-| **MoE + hybrid** | [MiMo-V2-Flash](https://huggingface.co/XiaomiMiMo/MiMo-V2-Flash) | 309B-A15B |
+| **하이브리드** | [Zamba2](https://huggingface.co/Zyphra/models?search=zamba2) | 1.2B, 2.7B, 7B |
+| **하이브리드** | [Falcon-H1](https://huggingface.co/collections/tiiuae/falcon-h1-6819f2795bc406da60fab8df) | 0.5B, 1.5B, 3B, 7B, 34B |
+| **MoE + 하이브리드** | [Qwen3-Next](https://huggingface.co/Qwen/Qwen3-Next-80B-A3B-Instruct) | 80B-A3B |
+| **MoE + 하이브리드** | [MiniMax-01](https://huggingface.co/MiniMaxAI/MiniMax-Text-01) | 456B-A46B |
+| **MoE + 하이브리드** | [MiMo-V2-Flash](https://huggingface.co/XiaomiMiMo/MiMo-V2-Flash) | 309B-A15B |
 
-Find your architecture type, and pick a baseline close to the number of parameters you'd like your model to have. Don't overthink it too much, as the architecture you start from is not set in stone. In the next section, you'll see how to go from a baseline to a final architecture that is optimal for you.
+아키텍처 유형을 정하고, 목표 파라미터 수에 가까운 베이스라인을 고르세요. 처음 고른 아키텍처를 끝까지 유지할 필요는 없으므로 너무 오래 고민할 필요는 없습니다. 다음 부분에서는 베이스라인에서 출발해 여러분에게 가장 잘 맞는 최종 아키텍처를 찾는 방법을 살펴봅니다.
 
-####  **Modifying Your Baseline: The Discipline of Derisking** 
+####  **베이스라인 수정하기: 위험을 줄이는 원칙**
 
-You now have a baseline that works and fits your use case. You could stop here, train it, and (assuming your data mixture is good) likely get a decent model. Many successful projects do exactly that. But baselines aren't optimized for your specific constraints; they're designed for the use cases and deployment targets of whoever built them. This means there are probably modifications worth making to better align with your goals. However, every architectural change carries risk: It might boost performance, tank it, or do nothing while wasting your ablation compute.
+이제 잘 작동하면서 용도에도 맞는 베이스라인을 골랐습니다. 여기서 더 바꾸지 않고 학습해도, 데이터 혼합이 좋다면 괜찮은 모델을 얻을 가능성이 높습니다. 성공한 프로젝트 중에도 그렇게 한 경우가 많습니다. 다만 베이스라인은 여러분이 아니라 원래 만든 사람의 용도와 배포 환경에 맞춰져 있습니다. 따라서 여러분의 목표에 맞추려면 바꾸는 편이 좋은 부분도 있을 것입니다. 하지만 아키텍처를 바꿀 때마다 위험이 따릅니다. 성능이 오를 수도, 크게 떨어질 수도, 아무 효과 없이 어블레이션용 연산 자원만 낭비할 수도 있습니다.
 
-The discipline that keeps you on track is  *derisking* : Never change anything unless you've tested that it helps.
+이때 지킬 원칙이 *위험 줄이기(derisking)*입니다. 도움이 된다는 사실을 실험으로 확인하기 전에는 아무것도 바꾸지 마세요.
 
-<Note title="What counts as derisked?" emoji="📍" variant="info">
+<Note title="언제 위험을 줄였다고 볼 수 있을까요?" emoji="📍" variant="info">
 
-A change is derisked when testing shows it either improves performance 
-on your target capabilities or provides a meaningful benefit 
-(e.g., faster inference, lower memory, better stability) without hurting 
-performance beyond your acceptable limits.
+변경의 위험을 줄였는지는 실험으로 확인합니다. 성능이 좋아졌다면
+목표 능력에서 개선이 나타나야 합니다. 또는 의미 있는 다른 이점이 있으면서
+추론이 빨라지거나 메모리가 줄거나 안정성이 높아지되,
+성능 저하가 허용할 수 있는 범위를 넘지 않아야 합니다.
 </Note>
 
-The tricky part is that your baseline and training setup have many components you could modify: attention mechanisms, positional encodings, activation functions, optimizers, training hyperparameters, normalization schemes, model layout, and more. Each represents a potential experiment, and these components often interact in nonlinear ways. You have neither the time nor the compute to test everything or explore every interaction.
+문제는 베이스라인과 학습 설정에서 바꿀 수 있는 부분이 많다는 데 있습니다. 어텐션 메커니즘, 위치 인코딩, 활성화 함수, 옵티마이저, 학습 하이퍼파라미터, 정규화 방식, 모델 구성 등 다양합니다. 각각을 시험해 볼 수 있지만, 구성 요소 사이에는 비선형적인 상호작용도 많습니다. 모든 것을 시험하거나 모든 상호작용을 탐색할 시간도 연산 자원도 없습니다.
 
-So, start by testing promising changes against your current baseline. When something works, integrate it to create a new baseline, then test the next change against that. If your compute budget allows it, you could test changes individually and run a leave-one-out analysis. Don't fall into the trap of running exhaustive grid searches over every hyperparameter or testing every architectural variant that comes out.
+그러니 유망한 변경을 현재 베이스라인과 비교하는 것부터 시작하세요. 효과가 확인되면 반영해 새 베이스라인을 만들고, 다음 변경을 새 베이스라인과 비교합니다. 연산 예산이 허용한다면 변경을 각각 시험하고 하나씩 제외하는 분석(leave-one-out)도 수행할 수 있습니다. 모든 하이퍼파라미터를 망라하는 그리드 탐색이나 새로 나오는 모든 아키텍처 변형을 시험하는 함정에 빠지지 마세요.
 
 <Sidenote>
 
-Check out the ScaleRL paper [@scalerl] for an example of this methodology in practice.
+이 방법론을 실제로 적용한 사례는 ScaleRL 논문 [@scalerl]을 참고하세요.
 </Sidenote>
 
-<Note title="Strategic experimentation" emoji="🎯" variant="success">
+<Note title="전략적인 실험" emoji="🎯" variant="success">
 
-Knowing how to run experiments isn't enough; you need to know which experiments are worth running. 
-Ask yourself two questions before testing any modification:
-- Will this help my specific use case?
-- Will this optimize my training?
+실험을 실행하는 방법만 알아서는 부족합니다. 어떤 실험을 할 가치가 있는지도 알아야 합니다.
+변경 사항을 시험하기 전에 두 가지를 자문하세요.
+- 내 구체적인 용도에 도움이 될까요?
+- 내 학습 과정을 최적화할 수 있을까요?
 
-If a modification doesn't clearly address either goal, skip it.
+어느 목표에도 분명히 도움이 되지 않는 변경이라면 건너뛰세요.
 </Note>
 
-Now that you know how to identify what's promising through strategic planning, it's time to move on to empirical validation. In the next sections, we'll show you how to actually test these changes in practice. We'll cover how to set up reliable experiments, interpret results, and avoid common pitfalls. Then, in the following chapters, we'll walk through concrete examples of testing popular architectural, data, infrastructure, and training decisions.
+계획을 세우며 시험해 볼 만한 선택지를 추렸으니, 이제 실험으로 검증할 차례입니다. 이어지는 부분에서는 실제로 이런 변경을 시험하는 방법을 보여 드립니다. 믿을 만한 실험을 설계하고, 결과를 해석하고, 흔한 함정을 피하는 방법을 다룹니다. 그다음 장들에서는 널리 쓰이는 아키텍처·데이터·인프라·학습 관련 결정을 검증하는 구체적인 사례를 살펴봅니다.
 
-### Picking a Training Framework
+### 학습 프레임워크 고르기
 
-The first decision we need to make is which framework to use for training our model and, by extension, for running all our ablations. 
+먼저 모델 학습에 어떤 프레임워크를 사용할지 결정해야 합니다. 모든 어블레이션도 같은 프레임워크에서 실행하게 됩니다.
 
 <Sidenote>
 
-Don't be a hero and switch the training framework between ablations and your final run. That is the road to suffering.
+무리해서 어블레이션과 최종 학습에 서로 다른 프레임워크를 쓰지 마세요. 고생길이 열립니다.
 </Sidenote>
 
-This choice involves balancing three key considerations:
+이 선택에서는 세 가지 핵심 조건의 균형을 맞춰야 합니다.
 
-1. The framework must support our target architecture, or let us easily extend it. 
-1. It needs to be stable and production-ready, and not prone to mysteriously breaking midway through training.
-1. It should deliver strong throughput so we can iterate quickly and make the most of our compute budget.
+1. 목표 아키텍처를 지원하거나, 쉽게 확장해 지원할 수 있어야 합니다.
+1. 안정적이고 실제 서비스에 쓸 수 있는 수준이어야 하며, 학습 도중 원인 모를 문제로 자주 멈추지 않아야 합니다.
+1. 실험을 빠르게 반복하고 연산 예산을 최대한 활용할 수 있도록 처리량이 높아야 합니다.
 
-In practice, these requirements might pull against each other, creating trade-offs. Let's look at some of the available options:
+실제로는 이 요구 사항들이 상충해 절충이 필요할 수 있습니다. 몇 가지 선택지를 살펴보겠습니다.
 
 <Wide>
 
-| Framework | Features | Battle-Tested | Optimized | Lines of Code (Core / Total) | Extensibility & Debugging |
+| 프레임워크 | 기능 | 실전 검증 | 최적화 | 코드 줄 수(핵심 / 전체) | 확장성과 디버깅 |
 | --- | --- | --- | --- | --- | --- |
-| **Megatron-LM** | ✅ Extensive | ✅ Kimi K2, Nemotron | ✅ Pioneers of 3D parallelism | 93k / 269k | ⚠️ Hard for beginners |
-| **DeepSpeed** | ✅ Extensive | ✅ BLOOM, GLM | ✅ Pioneers of ZeRO & 3D parallelism | 94k / 194k | ⚠️ Hard for beginners |
-| **TorchTitan** | ⚡ Growing feature set | ⚠️ Newer but tested by PyTorch team | ⚡Optimized for dense models, MoE improvements underway | 7k / 9k | ⚡ Moderate: requires parallelism know-how |
-| **Nanotron** | 🎯 Minimal, tailored for HF pretraining | ✅ Yes (StarCoder, SmolLM) | ✅ Optimized (UltraScale Playbook) | 15k / 66k | ⚡ Moderate: requires parallelism know-how |
+| **Megatron-LM** | ✅ 풍부함 | ✅ Kimi K2, Nemotron | ✅ 3D 병렬화의 선구자 | 93k / 269k | ⚠️ 초보자에게 어려움 |
+| **DeepSpeed** | ✅ 풍부함 | ✅ BLOOM, GLM | ✅ ZeRO와 3D 병렬화의 선구자 | 94k / 194k | ⚠️ 초보자에게 어려움 |
+| **TorchTitan** | ⚡ 기능 확장 중 | ⚠️ 비교적 새롭지만 PyTorch 팀이 검증함 | ⚡ 밀집 모델에 최적화, MoE 개선 진행 중 | 7k / 9k | ⚡ 보통, 병렬화 지식 필요 |
+| **Nanotron** | 🎯 최소한의 기능, HF 사전 학습에 맞춤 | ✅ 검증됨(StarCoder, SmolLM) | ✅ 최적화됨(UltraScale Playbook) | 15k / 66k | ⚡ 보통, 병렬화 지식 필요 |
 </Wide>
 
-This table summarizes the key trade-offs between popular frameworks. Lines of code for the first three frameworks are from the TorchTitan technical report [@torchtitan]. Let's discuss each in more detail:
+널리 쓰이는 프레임워크의 주요 장단점을 정리한 표입니다. 앞의 세 프레임워크의 코드 줄 수는 TorchTitan 기술 보고서 [@torchtitan]에서 가져왔습니다. 각각 좀 더 자세히 살펴보겠습니다.
 
-- [Megatron-LM](https://github.com/NVIDIA/Megatron-LM) from NVIDIA has been around for years and is battle-tested. It's what powers models like Kimi's K2 [@kimik2]; it delivers solid throughput and has most of the production features we'd want. But that maturity comes with complexity: The codebase can be hard to navigate and modify when you're new to it.
-- [DeepSpeed](https://github.com/deepspeedai/DeepSpeed) falls into a similar category. It's the pioneer of ZeRO optimization and powered models like BLOOM and GLM. Like Megatron-LM, it's extensively battle-tested and optimized, but it shares the same complexity challenges. The large codebase (194k total lines) can be intimidating when you're getting started, particularly for implementing custom features or debugging unexpected behavior.
-- On the other side, PyTorch's recent [TorchTitan](https://github.com/pytorch/torchtitan) library is much lighter and simpler to navigate, thanks to its compact and modular codebase. It has the core features needed for pretraining and is great for rapid experimentation. However, being newer, it isn't as battle-tested and can still be a bit unstable as it's actively developed.
-- [Nanotron](https://github.com/huggingface/nanotron) is a framework we built from scratch. This gave us full flexibility and a deep understanding of large-scale pretraining—insights that later evolved into the [Ultra-Scale Playbook](https://huggingface.co/spaces/nanotron/ultrascale-playbook). Since we open sourced the library, we also got valuable feedback from the community, though for most cases we had to battle-test features ourselves first. The framework now supports all the production features we need for training, but we're still building out areas like MoE support.
+- NVIDIA의 [Megatron-LM](https://github.com/NVIDIA/Megatron-LM)은 오랜 역사를 갖고 있으며 실전에서 검증되었습니다. Kimi의 K2 [@kimik2] 같은 모델의 기반이며, 처리량이 높고 실제 운영에 필요한 기능을 대부분 갖추고 있습니다. 다만 성숙한 만큼 복잡합니다. 처음 접하면 코드를 파악하고 수정하기 어려울 수 있습니다.
+- [DeepSpeed](https://github.com/deepspeedai/DeepSpeed)도 비슷합니다. ZeRO 최적화의 선구자이며 BLOOM과 GLM 같은 모델의 학습에 쓰였습니다. Megatron-LM처럼 실전에서 폭넓게 검증되고 최적화되었지만, 복잡성 문제도 공유합니다. 전체 194k 줄에 이르는 큰 코드베이스는 처음 시작할 때 부담스러울 수 있습니다. 특히 맞춤형 기능을 구현하거나 예상 밖의 동작을 디버깅할 때 그렇습니다.
+- 반면 최근 나온 PyTorch의 [TorchTitan](https://github.com/pytorch/torchtitan)은 작고 모듈화된 코드베이스 덕분에 훨씬 가볍고 파악하기 쉽습니다. 사전 학습에 필요한 핵심 기능을 갖추고 있어 빠른 실험에 적합합니다. 다만 비교적 새로워 실전 검증이 덜 되어 있고, 활발하게 개발되는 중이라 아직 다소 불안정할 수 있습니다.
+- [Nanotron](https://github.com/huggingface/nanotron)은 우리가 처음부터 만든 프레임워크입니다. 덕분에 원하는 대로 바꿀 수 있었고, 대규모 사전 학습도 깊이 이해하게 되었습니다. 그때 배운 내용을 나중에 [Ultra-Scale Playbook](https://huggingface.co/spaces/nanotron/ultrascale-playbook)으로 정리했습니다. 라이브러리를 오픈소스로 공개한 뒤 커뮤니티에서 귀중한 피드백을 받았지만, 대부분의 기능은 먼저 우리가 직접 실전에서 검증해야 했습니다. 이제 학습에 필요한 운영 기능을 모두 지원하지만, MoE 지원 같은 영역은 계속 확장하고 있습니다.
 
-Building from scratch made sense in our case, but it demands major investment in team expertise and time to debug issues and add missing features. A strong alternative is forking an existing framework and enhancing it for your needs. For example, Thinking Machines Lab built their internal pretraining library as [a fork of TorchTitan](https://x.com/cHHillee/status/1949470943291805832).
+우리에게는 처음부터 만드는 것이 타당했지만, 문제를 디버깅하고 빠진 기능을 추가하려면 팀의 전문성과 시간을 상당히 투자해야 합니다. 좋은 대안은 기존 프레임워크를 포크해 필요에 맞게 개선하는 것입니다. 예를 들어 Thinking Machines Lab은 [TorchTitan을 포크](https://x.com/cHHillee/status/1949470943291805832)해 사내 사전 학습 라이브러리를 만들었습니다.
 
-Ultimately, your choice will depend on your team's expertise, your target features, and how much time you're willing to invest in development versus using the most production-ready option. 
+결국 팀이 잘 아는 기술과 필요한 기능을 보고 골라야 합니다. 가장 안정적으로 운영할 수 있는 프레임워크를 쓸지, 직접 개발하는 데 시간을 더 들일지도 따져야 합니다.
 
-If multiple frameworks support your needs, compare their throughput on your specific hardware. For quick experiments and speed runs, simpler codebases often win.
+요구 사항을 충족하는 프레임워크가 여럿이라면, 실제 사용할 하드웨어에서 처리량을 비교하세요. 빠른 실험이나 단시간 학습에서는 단순한 코드베이스가 유리한 경우가 많습니다.
 
-### Ablation Setup
+### 어블레이션 설계
 
-With the framework chosen, we now need to design our ablation setup. We need experiments that are fast enough to iterate on quickly, but large enough that the results give us signal and transfer to the final model. 
+프레임워크를 골랐으니 이제 어블레이션을 설계해야 합니다. 빠르게 반복할 수 있는 실험이어야 합니다. 동시에 결과에서 차이를 읽어 내고 최종 모델에도 적용할 수 있을 만큼 규모가 커야 합니다.
 
-#### Setting Up Our Ablation Framework
+#### 어블레이션 체계 구성하기
 
-The goal of ablations is to run experiments at a small scale and get results we can confidently extrapolate to our final production run.
+어블레이션은 작은 규모에서 실험하되, 최종 모델을 학습할 때도 믿고 적용할 수 있는 결과를 얻으려는 것입니다.
 
-There are two main approaches. First, we can take our target model size and train it on fewer tokens. For the SmolLM3 ablations, we trained the full 3B model on 100B tokens instead of the final 11T. Second, if our target model is too large, we can train a smaller proxy model for ablations. For example, when Kimi were developing their 1T parameter K2 model with 32B active parameters, using the full size for all ablations would have been prohibitively expensive, so they ran some ablations on a 3B MoE with 0.5B active parameters [@kimik2].
+크게 두 가지 접근법이 있습니다. 첫째, 목표 모델 크기는 유지하되 더 적은 토큰으로 학습할 수 있습니다. SmolLM3 어블레이션에서는 전체 3B 모델을 최종 학습량인 11T 대신 100B 토큰으로 학습했습니다. 둘째, 목표 모델이 너무 크다면 더 작은 대리 모델로 어블레이션을 수행할 수 있습니다. 예를 들어 Kimi가 활성 파라미터 32B, 전체 파라미터 1T의 K2 모델을 개발할 때 모든 어블레이션에 전체 모델을 쓰면 비용을 감당하기 어려웠습니다. 그래서 일부 어블레이션은 활성 파라미터 0.5B인 3B MoE로 수행했습니다 [@kimik2].
 
-One key question is whether these small-scale findings actually transfer. In our experience, if something hurts performance at small scale, you can confidently rule it out for large scale. But if something works at small scale, you'll want to make sure you've trained on a reasonable number of tokens to conclude with high probability that these findings will extrapolate to larger scales. The longer you train and the closer the ablation models are to the final model, the better.
+중요한 것은 작은 규모에서 얻은 결과가 큰 규모에서도 통하는지입니다. 경험상 작은 규모에서 성능을 떨어뜨리는 선택지는 큰 규모에서도 확신을 갖고 제외할 수 있습니다. 하지만 작은 규모에서 효과가 있었다면, 충분한 토큰으로 학습해, 큰 규모에서도 효과가 있을 가능성이 높다는 확신을 얻어야 합니다. 학습 기간이 길고 어블레이션 모델이 최종 모델과 비슷할수록 좋습니다.
 
-We decided to use a baseline vanilla transformer for all ablations. Our main setup is a 1B transformer following the [Llama 3.2 1B](https://huggingface.co/meta-llama/Llama-3.2-1B) architecture trained on 45B tokens. This takes about a day and a half to train on a node of eight H100s using [this](https://huggingface.co/datasets/HuggingFaceTB/training-guide-nanotron-configs/blob/main/baseline_config_1B.yaml) Nanotron config (42k tokens per second per GPU). 
+모든 어블레이션에는 기본적인 트랜스포머를 베이스라인으로 쓰기로 했습니다. 주된 설정은 [Llama 3.2 1B](https://huggingface.co/meta-llama/Llama-3.2-1B) 아키텍처를 따르는 1B 트랜스포머를 45B 토큰으로 학습하는 것입니다. [이 Nanotron 설정](https://huggingface.co/datasets/HuggingFaceTB/training-guide-nanotron-configs/blob/main/baseline_config_1B.yaml)을 쓰면 H100 여덟 개로 구성된 노드 하나에서 학습에 약 하루 반이 걸립니다(GPU당 초당 42k 토큰).
 
 <Sidenote>
 
-We train for 45B tokens to ensure we get stable signal, though ~35B is <a href="https://arxiv.org/abs/2203.15556" target="_blank">Chinchilla-optimal</a> for this model size.
+이 모델 크기에서는 약 35B 토큰이 <a href="https://arxiv.org/abs/2203.15556" target="_blank">Chinchilla 기준 최적값</a>이지만, 안정적인 신호를 얻기 위해 45B 토큰으로 학습합니다.
 </Sidenote>
 
-Our baseline 1B config captures all the essential training details in a structured YAML format. Here are the key sections:
+1B 베이스라인 설정은 학습에 필요한 주요 항목을 YAML 형식으로 정리한 파일입니다. 주요 부분은 다음과 같습니다.
 
 ```yaml
 ## Datasets and mixing weights
@@ -524,18 +524,18 @@ tokens:
  
 ...
 ```
-For our ablations, we'll modify different sections depending on what we're testing while keeping everything else constant: the  `model`  section for [architecture choices](#architecture-choices), the  `optimizer`  section for [optimizer and training hyperparameters](#optimiser-and-training-hyperparameters), and the  `data_stages`  section for [data curation](#the-art-of-data-curation).
+어블레이션에서는 시험 대상에 따라 해당 부분만 바꾸고 나머지는 모두 일정하게 유지합니다. [아키텍처 선택](#architecture-choices)은 `model` 부분, [옵티마이저와 학습 하이퍼파라미터](#optimiser-and-training-hyperparameters)는 `optimizer` 부분, [데이터 선별](#the-art-of-data-curation)은 `data_stages` 부분을 수정합니다.
 
-<Note title="Modify one thing at a time" emoji="☝️" variant="danger">
+<Note title="한 번에 하나만 바꾸세요" emoji="☝️" variant="danger">
 
-Change only one variable per ablation, while keeping everything else constant. 
-If you change multiple things and performance improves, you won't know what 
-caused it. Test modifications individually, then combine successful ones and reassess.
+어블레이션마다 변수 하나만 바꾸고 나머지는 모두 일정하게 유지하세요.
+여러 가지를 바꿔서 성능이 좋아지면 무엇이 개선의 원인인지
+알 수 없습니다. 변경을 하나씩 시험한 뒤 성공한 변경들을 조합해 다시 평가하세요.
 </Note>
 
-When running ablations, some architectural changes can significantly alter the parameter count. For instance, switching from tied to untied embeddings doubles our embedding parameters, while using grouped query or multi-query attention instead of multi-head attention decreases our attention parameters substantially (we'll talk about all of these things shortly). 
+어블레이션 중 일부 아키텍처 변경은 파라미터 수를 크게 바꿀 수 있습니다. 예를 들어 임베딩을 공유하다가 분리하면 임베딩 파라미터 수가 두 배가 됩니다. 반면 멀티 헤드 어텐션 대신 그룹 쿼리 어텐션이나 멀티 쿼리 어텐션을 쓰면 어텐션 파라미터 수가 크게 줄어듭니다. 이 개념들은 곧 모두 설명하겠습니다.
 
-To ensure fair comparisons, we need to track parameter counts and occasionally adjust other hyperparameters (like hidden size or layer count) to keep model sizes roughly the same. Here is a simple function that we use to estimate parameter counts for different configurations:
+공정하게 비교하려면 파라미터 수를 확인해야 합니다. 모델 크기를 대략 같게 유지하도록 다른 하이퍼파라미터(은닉 차원이나 레이어 수 등)를 조정해야 할 때도 있습니다. 다음은 설정에 따른 파라미터 수를 추정할 때 쓰는 간단한 함수입니다.
 
 ```python
 from transformers import LlamaConfig, LlamaForCausalLM
@@ -563,7 +563,7 @@ def count_parameters(
     model = LlamaForCausalLM(config)  
     return f"{sum(p.numel() for p in model.parameters())/1e9:.2f}B"
 ```
-We also provide an interactive tool to visualize LLM parameter distributions, in the case of a dense transformer. This can come in handy when making architecture decisions or setting up configs for ablations.
+밀집 트랜스포머의 파라미터가 어디에 얼마나 쓰이는지 직접 확인하는 도구도 마련했습니다. 아키텍처를 결정하거나 어블레이션 설정을 구성할 때 유용합니다.
 
 <HtmlEmbed src="/embeds/parameter-calculator.html" />
 
@@ -571,125 +571,125 @@ We also provide an interactive tool to visualize LLM parameter distributions, in
 
 <Sidenote>
 
-This calculator assumes standard architectural choices: gated feedforward networks, standard head dimensions for attention ( *hidden_size*  /  *num_heads* ), and two layer norms per transformer layer. It doesn't include bias terms (if used).
+이 계산기는 게이트가 있는 피드포워드 네트워크, 표준 어텐션 헤드 차원( *hidden_size* / *num_heads* ), 트랜스포머 레이어당 두 개의 레이어 정규화라는 일반적인 아키텍처 선택을 가정합니다. 편향 항은 사용하더라도 계산에 포함하지 않습니다.
 </Sidenote>
 
-####  **Understanding What Works: Evaluation** 
+####  **무엇이 효과적인지 이해하기: 평가**
 
-Once we launch our ablations, how do we know what works and what doesn't? 
+어블레이션을 시작한 뒤 무엇이 효과적이고 무엇이 아닌지 어떻게 알 수 있을까요?
 
-The first instinct of anyone who trains models might be to look at the loss, and yes, that is important. You want to see it decreasing smoothly, without wild spikes or instability. For many architectural choices, the loss correlates well with downstream performance and can be sufficient [@chen2025]. However, looking only at the loss is not always reliable. Taking the example of data ablations, you would find that training on Wikipedia gives a lower loss than training on web pages (the next token is easier to predict), but that doesn't mean you'd get a more capable model. Similarly, if we change the tokenizer between runs, the losses aren't directly comparable since text gets split differently. Some changes might also specifically affect certain capabilities, like reasoning and math, but get washed away in the average loss. Last but not least, models can continue improving on downstream tasks even after pretraining loss has converged [@liu2022].
+모델을 학습할 때는 보통 손실부터 봅니다. 중요한 지표인 것은 맞습니다. 큰 폭의 급등이나 불안정성 없이 매끄럽게 감소하는지 확인해야 합니다. 많은 아키텍처 선택에서는 손실과 후속 과제 성능의 상관관계가 높아 손실만으로 충분할 수 있습니다 [@chen2025]. 하지만 손실만 보는 방법이 항상 믿을 만한 것은 아닙니다. 데이터 어블레이션을 예로 들면, Wikipedia로 학습할 때는 다음 토큰을 예측하기가 더 쉬워 웹페이지로 학습할 때보다 손실이 낮습니다. 그렇다고 더 유능한 모델을 얻는다는 뜻은 아닙니다. 마찬가지로 실험마다 토크나이저를 바꾸면 텍스트를 나누는 방식이 달라지므로 손실을 직접 비교할 수 없습니다. 어떤 변경은 추론이나 수학 같은 특정 능력에만 영향을 주기 때문에, 평균 손실에서는 그 효과가 드러나지 않을 수도 있습니다. 마지막으로 사전 학습 손실이 수렴한 뒤에도 후속 과제 성능은 계속 좋아질 수 있습니다 [@liu2022].
 
-We need more fine-grained evaluation to see the full picture and understand these nuanced effects. A natural approach is to use downstream evaluations that test knowledge, understanding, reasoning, and whatever other domains matter for us.
+이런 차이까지 파악하려면 더 세밀하게 평가해야 합니다. 지식, 이해, 추론을 비롯해 우리에게 중요한 영역을 시험하는 후속 과제 평가를 쓰면 됩니다.
 
-For these ablations, it's useful to focus on tasks that give good early signal and avoid noisy benchmarks. In [FineTasks](https://huggingface.co/spaces/HuggingFaceFW/blogpost-fine-tasks) and [FineWeb2](https://arxiv.org/pdf/2506.20920), reliable evaluation tasks are defined by four key principles:
+이런 어블레이션에서는 초반부터 좋은 신호를 주는 과제에 집중하고 노이즈가 많은 벤치마크는 피하는 편이 좋습니다. [FineTasks](https://huggingface.co/spaces/HuggingFaceFW/blogpost-fine-tasks)와 [FineWeb2](https://arxiv.org/pdf/2506.20920)에서는 신뢰할 만한 평가 과제를 네 가지 핵심 원칙으로 정의합니다.
 
--  **Monotonicity:**  The benchmark scores should consistently improve as models train longer.
--  **Low noise:**  When we train models with the same setup but different random seeds, the benchmark scores shouldn't vary wildly.
--  **Above-random performance:**  Many capabilities only emerge later in training, so tasks that show random-level performance for extended periods aren't useful for ablations. This is the case, for example, for MMLU in multiple choice format, as we will explain later.
--  **Ranking consistency:**  If one approach outperforms another at early stages, this ordering should remain stable as training continues.
+-  **단조성:** 모델을 더 오래 학습할수록 벤치마크 점수가 일관되게 좋아져야 합니다.
+-  **낮은 노이즈:** 같은 설정에서 난수 시드만 달리해 모델을 학습할 때 벤치마크 점수가 크게 출렁이지 않아야 합니다.
+-  **무작위 수준을 넘는 성능:** 많은 능력은 학습 후반에야 나타납니다. 따라서 오랫동안 무작위 수준의 성능만 보이는 과제는 어블레이션에 유용하지 않습니다. 뒤에서 설명할 객관식 형식의 MMLU가 그 예입니다.
+-  **순위 일관성:** 학습 초기에 한 접근법이 다른 접근법보다 성능이 좋았다면, 학습이 진행되어도 그 순서가 안정적으로 유지되어야 합니다.
 
-The quality of a task also depends on the task formulation (how we ask the model questions) and metric choice (how we compute the answer score).
+과제의 품질은 과제 형식(모델에게 질문하는 방식)과 지표 선택(답변 점수를 계산하는 방식)에도 달려 있습니다.
 
-Three common task formulations are  *multiple choice format (MCF)* ,  *cloze formulation (CF)* , and  *free-form generation (FG)* . MCF requires models to select an option from a number of choices explicitly presented in the prompt and prefixed with A/B/C/D (as is done in MMLU, for example). In CF, we compare the likelihood of the different choices to see which one is more likely without having provided them in the prompt. In FG, we look at the accuracy of the greedy generation for a given prompt. FG requires a lot of latent knowledge in the model and is usually too difficult a task for the model to be really useful in short pretraining ablations before a full training run. We thus focus on multiple choice formulations when running small-sized ablations (MCF or CF). 
+흔히 쓰는 과제 형식은 *객관식 형식(MCF)*, *빈칸 채우기 형식(CF)*, *자유 형식 생성(FG)* 세 가지입니다. MCF에서는 MMLU처럼 프롬프트에 A/B/C/D를 붙인 선택지를 명시적으로 제시하고 모델이 하나를 고르게 합니다. CF에서는 프롬프트에 선택지를 제시하지 않고 각 선택지의 가능도를 비교해 가장 가능성이 높은 것을 찾습니다. FG에서는 주어진 프롬프트에 대한 그리디 생성 결과의 정확도를 봅니다. FG에서 답을 생성하려면 모델이 이미 많은 지식을 학습한 상태여야 합니다. 대개 난도가 너무 높아, 본 학습 전에 짧게 수행하는 사전 학습 어블레이션에서는 별 도움이 되지 않습니다. 따라서 소규모 어블레이션에서는 선택지 기반 형식(MCF 또는 CF)에 집중합니다.
 
-<Note title="Heads‑up" emoji="📍" variant="info">
+<Note title="참고" emoji="📍" variant="info">
 
-For post-trained models, FG becomes the primary formulation since 
-we're evaluating whether the model can actually generate useful responses. 
-We'll cover evaluation for these models in ["Beyond Base Models—Post-Training."](#beyond-base-models--post-training-in-2025)
+사후 학습된 모델에서는 FG가 주된 형식이 됩니다.
+모델이 실제로 유용한 답변을 생성하는지 평가하기 때문입니다.
+이 모델들의 평가는 [“베이스 모델을 넘어, 사후 학습으로”](#beyond-base-models--post-training-in-2025)에서 다룹니다.
 </Note>
 
-Research has also shown that models struggle with MCF early in training, making CF better for early signal [@olmes; @du2025; @datacomp]. We thus use CF for small ablations and integrate MCF in the main run (as it gives better signal at later stages of training). To score a model's answer in sequence likelihood evaluations like CF, we compute accuracy as the percentage of questions where the the correct answer has the highest log probability normalized by character count. This normalization prevents a bias toward shorter answers.
+연구에 따르면 모델은 학습 초기에 MCF를 어려워하므로, 초반 신호를 얻는 데는 CF가 더 좋습니다 [@olmes; @du2025; @datacomp]. 따라서 작은 어블레이션에는 CF를 쓰고, 본 학습에는 후반부에 더 좋은 신호를 주는 MCF도 포함합니다. CF처럼 시퀀스 가능도를 평가할 때는 각 답변의 로그 확률을 문자 수로 정규화한 뒤, 정답의 값이 가장 높은 문항의 비율을 정확도로 계산합니다. 이렇게 정규화하면 짧은 답변을 선호하는 편향을 막을 수 있습니다.
 
 <Sidenote>
 
-The point at which MMLU MCF becomes non-random depends on the model size and training data. For a 7B transformer, the OLMES paper [@olmes] found the model starts showing non-random performance after 500B tokens. For a 1.7B model, we found this happens after 6T tokens in SmolLM2 [@smollm2]. @du2025 argue this is fundamentally about the pretraining loss reaching a certain threshold.
+MMLU MCF에서 무작위 수준을 벗어나는 시점은 모델 크기와 학습 데이터에 따라 다릅니다. OLMES 논문 [@olmes]에서는 7B 트랜스포머가 500B 토큰 이후 무작위 수준을 넘는 성능을 보이기 시작했습니다. 우리는 SmolLM2 [@smollm2]의 1.7B 모델에서 6T 토큰 이후에 같은 현상을 확인했습니다. @du2025는 근본적으로 사전 학습 손실이 특정 임계값에 도달하는 문제라고 주장합니다.
 </Sidenote>
 
-Our ablations evaluation suite includes the benchmarks from [FineWeb](https://huggingface.co/spaces/HuggingFaceFW/blogpost-fineweb-v1) ablations, except for SIQA, which we found to be too noisy. We add math and code benchmarks like GSM8K and HumanEval and the long context benchmark RULER for long context ablations. This aggregation of tasks tests world knowledge, reasoning, and common sense across a variety of formats, as shown in the following table. To speed up evaluations at the expense of some additional noise, we only evaluate on 1,000 questions from each benchmark (except for GSM8K, HumanEval, and RULER, which we use in full for the 3B SmolLM3 ablations but omit from the 1B experiments). We use CF to evaluate all multiple-choice benchmarks, as explained previously. Note that for multilingual ablations and actual training, we add more benchmarks to test multilinguality, which we detail later. These evaluations are run using [LightEval](https://github.com/huggingface/lighteval). Here's a summary of the key characteristics of each benchmark:
+어블레이션 평가 모음에는 [FineWeb](https://huggingface.co/spaces/HuggingFaceFW/blogpost-fineweb-v1) 어블레이션의 벤치마크를 포함하되, 노이즈가 너무 많았던 SIQA는 제외합니다. GSM8K와 HumanEval 같은 수학·코드 벤치마크를 추가하고, 긴 컨텍스트 어블레이션에는 RULER도 추가합니다. 아래 표처럼 다양한 형식의 과제를 모아 세상에 관한 지식, 추론, 상식을 평가합니다. 노이즈가 다소 늘더라도 평가를 빠르게 진행하기 위해 각 벤치마크에서 1,000문항만 평가합니다. 다만 GSM8K, HumanEval, RULER는 예외로, 3B SmolLM3 어블레이션에서는 전체 문항을 쓰고 1B 실험에서는 제외합니다. 앞서 설명했듯 모든 객관식 벤치마크는 CF로 평가합니다. 다국어 어블레이션과 실제 학습에서는 다국어 능력을 평가하는 벤치마크를 더 추가하며, 자세한 내용은 뒤에서 다룹니다. 평가는 [LightEval](https://github.com/huggingface/lighteval)로 실행합니다. 각 벤치마크의 주요 특징은 다음과 같습니다.
 
-| Benchmark | Domain | Task Type | Questions | What It Tests |
+| 벤치마크 | 영역 | 과제 유형 | 문항 수 | 평가 대상 |
 | --- | --- | --- | --- | --- |
-| MMLU | Knowledge | Multiple choice | 14k | Broad academic knowledge across 57 subjects |
-| ARC | Science & reasoning | Multiple choice | 7k | Grade school science reasoning |
-| HellaSwag | Common-sense reasoning | Multiple choice | 10k | Common-sense reasoning about everyday situations (narrative completion) |
-| WinoGrande | Common-sense reasoning | Binary choice | 1.7k | Pronoun resolution requiring world knowledge |
-| CommonSenseQA | Common-sense reasoning | Multiple choice | 1.1k | Common-sense reasoning about everyday concepts |
-| OpenBookQA | Science | Multiple choice | 500 | Elementary science facts with reasoning |
-| PIQA | Physical common sense | Binary choice | 1.8k | Physical common sense about everyday objects |
-| GSM8K | Math | Free-form generation | 1.3k | Grade school math word problems |
-| HumanEval | Code | Free-form generation | 164 | Python function synthesis from docstrings |
+| MMLU | 지식 | 객관식 | 14k | 57개 과목에 걸친 폭넓은 학술 지식 |
+| ARC | 과학·추론 | 객관식 | 7k | 초등학교 수준의 과학 추론 |
+| HellaSwag | 상식 추론 | 객관식 | 10k | 일상 상황에 관한 상식 추론(이야기 완성) |
+| WinoGrande | 상식 추론 | 양자택일 | 1.7k | 세상에 관한 지식을 활용한 대명사의 지시 대상 파악 |
+| CommonSenseQA | 상식 추론 | 객관식 | 1.1k | 일상 개념에 관한 상식 추론 |
+| OpenBookQA | 과학 | 객관식 | 500 | 초등학교 수준의 과학 지식과 추론 |
+| PIQA | 물리적 상식 | 양자택일 | 1.8k | 일상 사물에 관한 물리적 상식 |
+| GSM8K | 수학 | 자유 형식 생성 | 1.3k | 초등학교 수준의 수학 문장제 |
+| HumanEval | 코드 | 자유 형식 생성 | 164 | 독스트링에 따른 Python 함수 생성 |
 
-Let's look at a few example questions from each to get a concrete sense of what these evaluations actually test:
+각 평가에서 실제로 무엇을 묻는지 예제 문항으로 살펴보겠습니다.
 
 <iframe src="https://huggingface.co/datasets/HuggingFaceTB/llm-benchmarks-viewer/embed/viewer/default/mmlu" class="card card--p0" frameborder="0" width="100%" height="450px"></iframe>
 
 
-You can browse through the examples in the [interactive version](https://huggingface.co/datasets/HuggingFaceTB/llm-benchmarks-viewer/viewer) to see the types of questions in each benchmark. Notice how MMLU and ARC test factual knowledge with multiple choices, GSM8K requires computing numerical answers to math problems, and HumanEval requires generating complete Python code. This diversity ensures we're testing different aspects of model capability throughout our ablations.
+[인터랙티브 버전](https://huggingface.co/datasets/HuggingFaceTB/llm-benchmarks-viewer/viewer)에서 예제를 넘겨 보며 각 벤치마크의 문항 유형을 확인할 수 있습니다. MMLU와 ARC는 객관식으로 사실 지식을 묻고, GSM8K는 수학 문제의 수치 답변을 계산하게 하며, HumanEval은 완전한 Python 코드를 생성하게 합니다. 이처럼 여러 형식을 함께 쓰면 어블레이션 과정에서 모델의 다양한 능력을 평가할 수 있습니다.
 
- **Which Data Mixture for the Ablations?** 
+ **어블레이션에는 어떤 데이터 혼합을 쓸까요?**
 
-For  *architecture ablations* , we train on a fixed mix of high-quality datasets that provide early signal across a wide range of tasks. We use English ([FineWeb-Edu](https://huggingface.co/datasets/HuggingFaceFW/fineweb-edu)), math ([FineMath](https://huggingface.co/datasets/HuggingFaceTB/finemath)), and code ([Stack-Edu-Python](https://huggingface.co/datasets/HuggingFaceTB/stack-edu)). Architectural findings should extrapolate well to other datasets and domains, including multilingual data, so we can keep our data mixture simple.
+*아키텍처 어블레이션*에서는 다양한 과제에서 초반부터 신호를 주는 고품질 데이터셋을 일정한 비율로 섞어 학습합니다. 영어([FineWeb-Edu](https://huggingface.co/datasets/HuggingFaceFW/fineweb-edu)), 수학([FineMath](https://huggingface.co/datasets/HuggingFaceTB/finemath)), 코드([Stack-Edu-Python](https://huggingface.co/datasets/HuggingFaceTB/stack-edu))를 사용합니다. 아키텍처 실험에서 얻은 결과는 다국어 데이터를 비롯한 다른 데이터셋과 도메인에서도 잘 맞아야 하므로, 데이터 혼합은 단순하게 유지할 수 있습니다.
 
-For  *data ablations* , we take the opposite approach: We fix the architecture and systematically vary the data mixtures to understand how different data sources affect model performance.
+*데이터 어블레이션*에서는 반대로 접근합니다. 아키텍처를 고정하고 데이터 혼합을 체계적으로 바꾸면서, 서로 다른 데이터 소스가 모델 성능에 어떤 영향을 주는지 파악합니다.
 
 <Sidenote>
 
-Sometimes the differences in the evaluations can be small. If you have enough compute, it might be worth rerunning the same ablations with different seeds to see how much the results vary.
+평가 결과의 차이가 작을 때도 있습니다. 연산 자원이 충분하다면 시드를 달리해 같은 어블레이션을 다시 실행하고 결과가 얼마나 달라지는지 확인할 만합니다.
 </Sidenote>
 
-The real value of a solid ablation setup goes beyond just building a good model. When things go wrong during our main training run (and they will, no matter how much we prepare), we want to be confident in every decision we made and able to quickly identify which components weren't tested. This preparation saves debugging time and protects our future mental sanity.
+어블레이션을 잘 설계해 두면 좋은 모델을 만드는 것 외에도 도움이 됩니다. 본 학습에서 문제가 생겼을 때, 우리가 내린 모든 결정에 확신을 갖고 아직 검증하지 않은 구성 요소를 빠르게 찾아낼 수 있어야 합니다. 아무리 준비해도 문제는 생기기 마련입니다. 미리 준비해 두면 디버깅 시간을 줄이고 나중에 정신적으로도 덜 고생합니다.
 
-#### Estimating Ablation Cost
+#### 어블레이션 비용 추정하기
 
-Ablations are amazing, but they require GPU time. It's worth understanding the cost of these experiments. The following table shows our complete compute breakdown for SmolLM3 pretraining: the main run (accounting for occasional downtime), ablations before and during training, plus compute spent on an unexpected scaling issue that forced a restart and some debugging (which we'll detail later). 
+어블레이션은 유용하지만 GPU 시간이 듭니다. 비용이 얼마나 드는지도 알아두세요. 아래 표는 SmolLM3 사전 학습에 쓴 전체 연산 자원의 내역입니다. 가끔 발생하는 중단 시간까지 반영한 본 학습, 학습 전과 도중의 어블레이션을 포함합니다. 규모를 키우면서 예상 밖의 문제가 생겨 학습을 재시작하고 디버깅하는 데 쓴 자원도 포함했습니다. 이 문제는 뒤에서 자세히 다룹니다.
 
-| Phase | GPUs | Days | GPU Hours |
+| 단계 | GPU 수 | 일수 | GPU 시간 |
 | --- | --- | --- | --- |
-| Main pretraining run | 384 | 30 | 276,480 |
-| Ablations (pretraining) | 192 | 15 | 69,120 |
-| Ablations (mid-training) | 192 | 10 | 46,080 |
-| Training reset / debugging | 384 / 192 | 3 / 4 | 46,080 |
-| **Total cost** | - | - | **437,760** |
+| 본 사전 학습 | 384 | 30 | 276,480 |
+| 어블레이션(사전 학습) | 192 | 15 | 69,120 |
+| 어블레이션(중간 학습) | 192 | 10 | 46,080 |
+| 학습 재시작 / 디버깅 | 384 / 192 | 3 / 4 | 46,080 |
+| **총비용** | - | - | **437,760** |
 
 <Sidenote>
 
-We estimate evaluation costs to be slightly under 10,000 GPU hours. Our full evaluation suite (English, multilingual, math & code) takes around 1.5 hours per GPU, and we evaluate every 10B tokens throughout the 11T tokens, in addition to numerous ablations. The long context evaluations were particularly expensive, taking around 1 hour on 8 GPUs per run.
+평가 비용은 10,000 GPU 시간보다 조금 적게 들 것으로 추정합니다. 전체 평가 모음(영어, 다국어, 수학·코드)에는 GPU당 약 1.5시간이 걸리며, 수많은 어블레이션 외에도 11T 토큰을 학습하는 동안 10B 토큰마다 평가합니다. 긴 컨텍스트 평가는 특히 비용이 많이 들어, 한 번에 GPU 8개로 약 1시간이 걸렸습니다.
 </Sidenote>
 
-The numbers reveal an important fact: Ablations and debugging consumed a total of 161,280 GPU hours,  **more than half the cost of our main training run**  (276,480 GPU hours). We ran over 100 ablations across SmolLM3's development: We spent 20 days on pretraining ablations, 10 days on mid-training ablations, and 7 days recovering from the aforementioned unexpected training issue.
+어블레이션과 디버깅에 쓴 시간만 합쳐도 161,280 GPU 시간입니다. 본 학습 비용인 276,480 GPU 시간의 **절반이 넘습니다**. SmolLM3 개발 과정에서 어블레이션을 100번 넘게 수행했습니다. 사전 학습 어블레이션에 20일, 중간 학습 어블레이션에 10일, 앞서 언급한 예상 밖의 학습 문제에서 복구하는 데 7일을 썼습니다.
 
-This highlights why ablation costs must be factored into your compute budget: Plan for training cost plus ablations plus a buffer for surprises. If you're targeting SOTA performance, implementing new architecture changes, or don't already have a proven recipe, ablations become a substantial cost center rather than minor experiments.
+따라서 연산 예산에는 어블레이션 비용도 반드시 반영해야 합니다. 학습 비용에 어블레이션 비용과 예상 밖의 상황을 위한 여유분까지 더해 계획하세요. SOTA 성능을 목표로 하거나, 새로운 아키텍처 변경을 구현하거나, 이미 검증된 학습 방법이 없다면 어블레이션에도 상당한 예산이 듭니다. 작은 실험 정도로 생각해서는 안 됩니다.
 
 <Sidenote>
 
-When [DeepSeek-V3](https://huggingface.co/deepseek-ai/DeepSeek-V3) came out, [the world fixated](https://www.forbes.com/sites/markminevich/2025/02/06/the-6-million-ai-bombshell-how-deepseek-shook-wall-street-and-ai-leadership/) on its reported $5.6M training cost. Many interpreted that number as the full R&D cost. In reality, it only reflects the final training run. The much larger—and usually invisible—expense is in the research itself: the ablations, failed runs, and debugging that lead to a final recipe. Given the scale and novelty of the model, the research costs were certainly higher.
+[DeepSeek-V3](https://huggingface.co/deepseek-ai/DeepSeek-V3)가 공개되었을 때 [세상은](https://www.forbes.com/sites/markminevich/2025/02/06/the-6-million-ai-bombshell-how-deepseek-shook-wall-street-and-ai-leadership/) 보고된 학습 비용 $5.6M에 주목했습니다. 많은 사람이 이를 전체 연구개발 비용으로 받아들였습니다. 실제로는 최종 학습 한 번의 비용만 반영한 수치입니다. 연구 자체에 드는 훨씬 큰 비용은 대개 드러나지 않습니다. 최종 학습 방법에 도달하기까지 수행한 어블레이션, 실패한 학습, 디버깅에 드는 비용입니다. 모델의 규모와 참신함을 고려하면 연구 비용은 분명 더 컸을 것입니다.
 </Sidenote>
 
-Before we move on to designing the model architecutre, let's establish some ground rules that every person running experiments should follow.
+모델 아키텍처 설계로 넘어가기 전에, 실험을 하는 사람이라면 누구나 따라야 할 기본 원칙을 정리하겠습니다.
 
-### Rules of Engagement
+### 실험의 기본 원칙
 
 <Quote>
 
-TL;DR: Be paranoid.
+요약: 의심하고 또 의심하세요.
 </Quote>
 
- **Validate your evaluation suite.** Before training any models, make sure your evaluation suite can reproduce the published results of models you will compare against. If any benchmarks are generative in nature (e.g., GSM8k), be extra paranoid and manually inspect a few samples to ensure that the prompt is formatted correctly and that any post-processing is extracting the correct information. Since evals will guide every single decision, getting this step right is crucial for the success of the project!
+ **평가 모음을 검증하세요.** 모델을 학습하기 전에, 비교 대상 모델의 공개된 결과를 평가 모음으로 재현할 수 있는지 확인하세요. 생성형 벤치마크(예를 들어 GSM8k)가 있다면 더욱 철저히 의심하고, 표본 몇 개를 직접 살펴 프롬프트 형식과 후처리의 정보 추출이 올바른지 확인하세요. 이후의 모든 결정을 평가 결과에 따라 내리므로, 프로젝트가 성공하려면 여기서부터 제대로 확인해야 합니다!
 
- **Test every change, no matter how small.**  Don't underestimate the impact of that seemingly innocent library upgrade or the commit that "only changed two lines." These small changes can introduce subtle bugs or performance shifts that will contaminate your results. You need a library with a strong test suite on the cases that matter to you to avoid regression.
+ **아무리 작아도 모든 변경을 시험하세요.** 무해해 보이는 라이브러리 업그레이드나 “두 줄만 바꾼” 커밋의 영향을 과소평가하지 마세요. 이런 작은 변경으로도 미묘한 버그나 성능 변화가 생겨 결과가 오염될 수 있습니다. 기존 기능이나 성능이 나빠지는 일을 막으려면, 여러분에게 중요한 사례를 충분히 테스트하는 라이브러리를 써야 합니다.
 
 <Sidenote>
 
-In some cases, a bug can be solved by upgrading the library to the latest version. For a beautiful example of this with some detective debugging, see Elana Simon's [blog post](https://elanapearl.github.io/blog/2025/the-bug-that-taught-me-pytorch/?t=1).
+경우에 따라서는 라이브러리를 최신 버전으로 업그레이드해 버그를 해결할 수 있습니다. 탐정처럼 추적하며 디버깅한 멋진 사례는 Elana Simon의 [블로그 글](https://elanapearl.github.io/blog/2025/the-bug-that-taught-me-pytorch/?t=1)을 참고하세요.
 </Sidenote>
 
- **Change one thing at a time.**  Keep everything else identical between experiments. Some changes can interact with each other in unexpected ways, so you want to assess the individual contribution of each change first, then try combining them to see their overall impact.
+ **한 번에 하나만 바꾸세요.** 실험 간에 나머지 조건은 모두 같게 유지하세요. 일부 변경은 예상치 못한 방식으로 상호작용할 수 있으므로, 먼저 각 변경의 개별 기여를 평가한 뒤 조합해 전체 영향을 살펴보세요.
 
- **Train on enough tokens and use sufficient evaluations.**  As we mentioned earlier, you need to make sure you have good coverage in your evaluation suite and train long enough to get reliable signal. Cutting corners here will lead to noisy results and bad decisions.
+ **충분한 토큰으로 학습하고 충분히 평가하세요.** 앞서 말했듯, 평가 모음이 필요한 영역을 충분히 포괄하는지 확인하고 신뢰할 만한 신호를 얻을 만큼 오래 학습해야 합니다. 여기서 대충 넘어가면 결과에 노이즈가 많아지고 판단도 잘못하게 됩니다.
 
-Following these rules might feel overly cautious, but the alternative is spending days debugging mysterious performance drops that turn out to have been caused by an unrelated dependency update from days earlier. The golden principle: Once you have a good setup,  *no change should go untested!*
+이런 원칙이 지나치게 신중하게 느껴질 수도 있습니다. 하지만 지키지 않으면, 원인을 알 수 없는 성능 저하를 며칠씩 디버깅하다가, 정작 원인은 며칠 전에 한 무관한 의존성 업데이트였다는 사실을 알게 될 수 있습니다. 핵심 원칙은 하나입니다. 좋은 설정을 갖췄다면 *어떤 변경도 검증 없이 넘어가지 마세요!*
 
 ## Designing the Model Architecture
 

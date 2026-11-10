@@ -367,53 +367,53 @@
       container.innerHTML = `
         <div class="controls-grid">
           <div class="slider-group">
-            <label for="vocabSize">Vocabulary Size <span class="slider-value" id="vocabValue">128k</span></label>
+            <label for="vocabSize">어휘 집합 크기 <span class="slider-value" id="vocabValue">128k</span></label>
             <input type="range" id="vocabSize" min="32000" max="256000" step="1000" value="128256">
           </div>
           
           <div class="slider-group">
-            <label for="hiddenSize">Hidden Size <span class="slider-value" id="hiddenValue">2048</span></label>
+            <label for="hiddenSize">은닉 차원 <span class="slider-value" id="hiddenValue">2048</span></label>
             <input type="range" id="hiddenSize" min="512" max="8192" step="64" value="2048">
           </div>
           
           <div class="slider-group">
-            <label for="numLayers">Layers <span class="slider-value" id="layersValue">16</span></label>
+            <label for="numLayers">레이어 수 <span class="slider-value" id="layersValue">16</span></label>
             <input type="range" id="numLayers" min="4" max="64" step="1" value="16">
           </div>
           
           <div class="slider-group">
-            <label for="numHeads">Attention Heads <span class="slider-value" id="headsValue">32</span></label>
+            <label for="numHeads">어텐션 헤드 수 <span class="slider-value" id="headsValue">32</span></label>
             <input type="range" id="numHeads" min="8" max="128" step="1" value="32">
           </div>
           
           <div class="slider-group">
-            <label for="numKVHeads">KV Heads <span class="slider-value" id="kvHeadsValue">32</span></label>
+            <label for="numKVHeads">KV 헤드 수 <span class="slider-value" id="kvHeadsValue">32</span></label>
             <input type="range" id="numKVHeads" min="1" max="64" step="1" value="32">
           </div>
           
           <div class="slider-group">
-            <label for="intermediateSize">Intermediate Size <span class="slider-value" id="intermediateValue">8192</span></label>
+            <label for="intermediateSize">중간 차원 <span class="slider-value" id="intermediateValue">8192</span></label>
             <input type="range" id="intermediateSize" min="2048" max="32768" step="256" value="8192">
           </div>
           
           <div class="control-group" style="grid-column: 1 / -1;">
-            <label for="tieEmbeddings">Tie Embeddings</label>
+            <label for="tieEmbeddings">임베딩 공유</label>
             <select id="tieEmbeddings">
-              <option value="true">Yes</option>
-              <option value="false">No</option>
+              <option value="true">예</option>
+              <option value="false">아니요</option>
             </select>
           </div>
         </div>
         
         <div class="total-params-container">
           <div class="total-params" id="totalParams">1.46B</div>
-          <div class="total-params-label">Parameters</div>
+          <div class="total-params-label">파라미터 수</div>
         </div>
         
         <div class="breakdown">
           <div class="component">
-            <div class="component-title">Embeddings</div>
-            <div class="component-description">Input + Output Projection</div>
+            <div class="component-title">임베딩</div>
+            <div class="component-description">입력 + 출력 프로젝션</div>
             <div class="component-params" id="embeddingParams">524M</div>
             <div class="calculation-section">
               <div class="component-calculation" id="embeddingCalculation">128k × 2048 × 2</div>
@@ -422,8 +422,8 @@
           </div>
           
           <div class="component">
-            <div class="component-title">Attention Layers</div>
-            <div class="component-description">Q, K, V, O projections</div>
+            <div class="component-title">어텐션 레이어</div>
+            <div class="component-description">Q, K, V, O 프로젝션</div>
             <div class="component-params" id="attentionParams">268M</div>
             <div class="calculation-section">
               <div class="component-calculation" id="attentionCalculation">16 × 2048² × 4</div>
@@ -432,8 +432,8 @@
           </div>
           
           <div class="component">
-            <div class="component-title">Feed Forward</div>
-            <div class="component-description">Up, Gate, Down projections</div>
+            <div class="component-title">피드포워드</div>
+            <div class="component-description">업, 게이트, 다운 프로젝션</div>
             <div class="component-params" id="ffnParams">805M</div>
             <div class="calculation-section">
               <div class="component-calculation" id="ffnCalculation">16 × 2048 × 8192 × 3</div>
@@ -442,8 +442,8 @@
           </div>
           
           <div class="component">
-            <div class="component-title">Layer Norms</div>
-            <div class="component-description">Input + Attention norms</div>
+            <div class="component-title">레이어 정규화</div>
+            <div class="component-description">입력 + 어텐션 정규화</div>
             <div class="component-params" id="lnParams">131K</div>
             <div class="calculation-section">
               <div class="component-calculation" id="lnCalculation">16 × 2048 × 2</div>
@@ -454,15 +454,15 @@
         
         <div class="comparison">
           <div class="config-card">
-            <div class="config-title">Attention Type</div>
+            <div class="config-title">어텐션 유형</div>
             <div class="config-value" id="attentionType">MHA</div>
           </div>
           <div class="config-card">
-            <div class="config-title">Embedding Strategy</div>
-            <div class="config-value" id="embeddingStrategy">Tied</div>
+            <div class="config-title">임베딩 구성</div>
+            <div class="config-value" id="embeddingStrategy">공유</div>
           </div>
           <div class="config-card">
-            <div class="config-title">Params per Layer</div>
+            <div class="config-title">레이어당 파라미터 수</div>
             <div class="config-value" id="paramsPerLayer">67M</div>
           </div>
         </div>
@@ -585,7 +585,7 @@
         else if (numKVHeads < numHeads) attentionType = 'GQA';
 
         container.querySelector('#attentionType').textContent = attentionType;
-        container.querySelector('#embeddingStrategy').textContent = tieEmbeddings ? 'Tied' : 'Separate';
+        container.querySelector('#embeddingStrategy').textContent = tieEmbeddings ? '공유' : '분리';
         container.querySelector('#paramsPerLayer').innerHTML =
           formatNumber((attentionParams + ffnParams + lnParams) / numLayers);
 
