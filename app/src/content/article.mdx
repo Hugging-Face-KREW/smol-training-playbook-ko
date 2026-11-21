@@ -2052,64 +2052,64 @@ $$
 
 $$
 
-### Optimizer and Training Hyperparameters
+### 옵티마이저와 학습 하이퍼파라미터
 
-The pieces are coming into place. We've run our ablations, settled on the architecture, and chosen a tokenizer. But before we can actually launch the training, there are still some crucial decisions to make: Which optimizer should we use? What learning rate and batch size? How should we schedule the learning rate over training?
+이제 준비가 하나씩 끝나 갑니다. 어블레이션을 거쳐 아키텍처를 확정했고 토크나이저도 골랐습니다. 그래도 학습을 시작하기 전에 결정할 중요한 문제가 남았습니다. 어떤 옵티마이저를 쓸까요? 학습률과 배치 크기는 얼마로 잡을까요? 학습이 진행되는 동안 학습률은 어떻게 바꿀까요?
 
-The tempting approach here is to just borrow values from another strong model in the literature. After all, if it worked for big labs, it should work for us, right? And in many cases that approach will work just fine, if we're taking values from a similar architecture and model size.
+성능이 좋은 다른 모델의 논문에서 설정값을 그대로 가져오고 싶은 유혹이 듭니다. 대형 연구소에서 통했으니 우리에게도 통하지 않을까요? 아키텍처와 크기가 비슷한 모델에서 가져온 값이라면 실제로 잘 통하는 경우가 많습니다.
 
-However, we risk leaving performance on the table by not tuning these values for our specific setup. Hyperparameters reported in the literature will have been optimized for specific data and constraints, and sometimes those constraints aren't even about performance. Maybe the learning rate was picked early in development and never revisited. Even when model authors do thorough hyperparameter sweeps, those optimal values were found for their exact combination of architecture, data, and training regime, not ours. Literature values are always a good starting point, but it's a good idea to explore whether we can find better values in the neighborhood.
+다만 우리 환경에 맞게 조정하지 않으면 더 나은 성능을 끌어낼 기회를 놓칠 수 있습니다. 논문에 실린 하이퍼파라미터는 특정 데이터와 제약 조건에 맞춘 값입니다. 그 제약이 성능과 무관할 때도 있습니다. 개발 초기에 정한 학습률을 한 번도 재검토하지 않았을지도 모릅니다. 연구진이 여러 하이퍼파라미터 값을 꼼꼼히 시험했더라도, 거기서 찾은 최적값은 그 팀의 아키텍처와 데이터, 학습 방식을 조합했을 때의 값입니다. 문헌에 나온 값은 언제나 좋은 출발점이니, 그 주변에서 더 나은 값을 찾을 수 있는지 살펴보세요.
 
-In this section, we'll explore the latest optimizers (and see if trusty old AdamW [@kingma2014adam] still stands the [test of time](https://blog.iclr.cc/2025/04/14/announcing-the-test-of-time-award-winners-from-iclr-2015/)), dive into learning rate schedules that go beyond the standard cosine decay, and figure out how to tune the learning rate and batch size given a model and data size. 
+이 절에서는 최신 옵티마이저를 살펴보고, 오랫동안 믿고 써 온 AdamW [@kingma2014adam]가 여전히 [시간의 시험](https://blog.iclr.cc/2025/04/14/announcing-the-test-of-time-award-winners-from-iclr-2015/)을 견디는지도 알아봅니다. 흔히 쓰는 코사인 감쇠 외에 어떤 학습률 스케줄이 있는지 살펴보고, 모델과 데이터 규모에 맞게 학습률과 배치 크기를 조정하는 방법도 알아봅니다.
 
-Let's start with the optimizer wars.
+먼저 옵티마이저들의 각축전부터 살펴보겠습니다.
 
-#### Optimizers: AdamW and Beyond
+#### AdamW와 그 밖의 옵티마이저
 
-The optimizer is at the heart of the whole LLM training operation. It decides for every parameter what the actual update step will be, based on the past updates, the current weights, and the gradients derived from the loss. At the same time, it is also a [memory- and compute-hungry beast](https://huggingface.co/spaces/nanotron/ultrascale-playbook?section=profiling_the_memory_usage) and thus can impact how many GPUs you need and how fast your training is.
+옵티마이저는 LLM 학습의 핵심입니다. 이전 업데이트와 현재 가중치, 손실에서 구한 그래디언트를 바탕으로 각 파라미터를 실제로 얼마나, 어느 방향으로 업데이트할지 결정합니다. 동시에 [메모리와 연산 자원을 엄청나게 소모](https://huggingface.co/spaces/nanotron/ultrascale-playbook?section=profiling_the_memory_usage)하기 때문에 필요한 GPU 수와 학습 속도에도 영향을 줍니다.
 
 <Sidenote>
 
-If you're uncertain what an optimizer is and what it's useful for, check out Sebastian Ruder's [blog on Gradient Descent and optimizers](https://www.ruder.io/optimizing-gradient-descent/), which notably compares cool optimizers.
+옵티마이저가 무엇이고 어디에 쓰이는지 궁금하다면 Sebastian Ruder의 [경사 하강법과 옵티마이저에 관한 블로그 글](https://www.ruder.io/optimizing-gradient-descent/)을 읽어 보세요. 여러 흥미로운 옵티마이저를 비교한 부분이 특히 볼 만합니다.
 </Sidenote>
 
-We didn't spare any effort to summarize the current landscape of optimizers used for LLM pretraining:
+LLM 사전 학습에 어떤 옵티마이저를 쓰는지 심혈을 기울여 정리해 보았습니다.
 
-| Model | Optimizer |
+| 모델 | 옵티마이저 |
 | --- | --- |
 | Kimi K2, GLM 4.5 | Muon |
-| Everyone else | AdamW |
+| 그 밖의 모든 모델 | AdamW |
 
-So, you might wonder, why is everyone using AdamW?
+그럼 왜 다들 AdamW를 쓰는지 궁금하시겠죠?
 
-The person writing this part of the guide thinks it's because "people are lazy" (hi, it's [Elie](https://x.com/eliebakouch)), but others might more realistically say that AdamW has been working well/better than the competition at different scales for a long time, and it's always a bit scary to change such a core component—especially if it's hard (i.e., expensive) to test how well it does in very long training runs.
+이 대목을 쓰는 사람은 “다들 귀찮아서”라고 생각합니다(안녕하세요, [Elie](https://x.com/eliebakouch)입니다). 좀 더 현실적인 답을 내놓는 사람도 있겠죠. AdamW는 오랫동안 다양한 규모에서 좋은 성능을 냈고 경쟁 기법을 앞서기도 했습니다. 이런 핵심 구성 요소를 바꾸기는 늘 조금 겁이 납니다. 특히 아주 긴 학습에서 새 옵티마이저가 얼마나 잘 작동하는지 시험하기가 어렵다면, 다시 말해 돈이 많이 든다면 더욱 그렇습니다.
 
-Moreover, comparing optimizers fairly is harder than it looks. Scale changes the dynamics in ways that can be hard to simulate in small ablations, so hyperparameter tuning is complex. You could say, "It's OK, I've tuned my AdamW for weeks, I can just reuse the same hyperparameters to compare!" We wish so much this were true. But unfortunately, for each optimizer, you need to do a proper hyperparameter search (1D? 2D? 3D?), which makes optimizer research hard and costly.
+게다가 옵티마이저를 공정하게 비교하기란 생각보다 어렵습니다. 규모가 달라지면 학습 양상도 달라지는데, 작은 어블레이션으로는 그 변화를 재현하기 어려워 하이퍼파라미터를 조정하기가 복잡합니다. “괜찮아요. AdamW를 몇 주나 조정했으니 같은 하이퍼파라미터로 비교하면 되죠!”라고 할 수도 있습니다. 우리도 정말 그러면 좋겠습니다. 아쉽게도 옵티마이저마다 하이퍼파라미터를 제대로 탐색해야 합니다. 1차원으로 할까요, 2차원으로 할까요, 아니면 3차원으로 할까요? 옵티마이저 연구가 어렵고 비용도 많이 드는 이유입니다.
 
 <Sidenote>
 
-Often, the baseline is not tuned very well, so new optimizers are compared against weak AdamW settings. A recent study [@wen2025fantasticpretrainingoptimizers] shows how much that alone skews reported gains.
+베이스라인을 충분히 조정하지 않아 성능이 낮은 AdamW 설정과 새 옵티마이저를 비교하는 경우가 많습니다. 최근 연구 [@wen2025fantasticpretrainingoptimizers]를 보면 이 차이만으로도 보고된 성능 향상 폭이 얼마나 왜곡되는지 알 수 있습니다.
 </Sidenote>
 
-So, let's start with the classic, and the foundation of Durk Kingma's scary [Google Scholar](https://scholar.google.com/citations?user=yyIoQu4AAAAJ&hl=en) domination: AdamW.
+그럼 고전이자 Durk Kingma가 무서울 정도로 [Google Scholar](https://scholar.google.com/citations?user=yyIoQu4AAAAJ&hl=en)를 장악한 비결인 AdamW부터 살펴보겠습니다.
 
  **AdamW** 
 
-Adam (Adaptive Momentum Estimation) is a first-order optimization technique, which means it looks only at the gradients. It adapts the learning rate for each parameter using momentum derived from past gradients. 
+Adam(Adaptive Momentum Estimation)은 그래디언트만 사용하는 1차 최적화 기법입니다. 과거 그래디언트에서 얻은 모멘텀을 이용해 파라미터마다 학습률을 조절합니다.
 
-The careful reader might wonder: Hey there, aren't you missing a W? Indeed! We specifically add the W (weight decay) because whereas in standard stochastic gradient descent (SGD) we can simply add a  $\lambda \theta^2$  (where  $\theta$  are the weights) to the loss to apply L2 regularization, if we do the same with Adam, the adaptive learning rate will also affect the L2 regularization. This means the regularization strength becomes dependent on gradient magnitudes, weakening its effect. This is not what we want; AdamW applies it decoupled from the main optimization loop to fix this issue.
+꼼꼼한 독자라면 “잠깐, W가 빠지지 않았나요?”라고 물으실 겁니다. 맞습니다! W는 가중치 감쇠(weight decay)를 뜻하며, 굳이 구분하는 데는 이유가 있습니다. 일반적인 확률적 경사 하강법(SGD)에서는 손실에 $\lambda \theta^2$를 더하기만 하면 L2 정규화가 적용됩니다. 여기서 $\theta$는 가중치입니다. Adam에서 똑같이 하면 적응형 학습률이 L2 정규화에도 영향을 줍니다. 정규화 강도가 그래디언트 크기에 따라 달라져 정규화 효과가 약해지는 셈입니다. AdamW는 가중치 감쇠를 주 최적화 과정과 분리해 적용함으로써 이 문제를 해결합니다.
 
-Interestingly, over the last few years the AdamW hyperparameters have barely moved:
+흥미롭게도 지난 몇 년 동안 AdamW의 하이퍼파라미터는 거의 달라지지 않았습니다.
 
 - β₁ = 0.9, β₂ = 0.95
-- Grad norm clipping = 1.0
-- Weight decay = 0.1 (Llama 3 405B drops this to 0.01)
+- 그래디언트 노름 클리핑 = 1.0
+- 가중치 감쇠 = 0.1 (Llama 3 405B에서는 0.01로 낮춤)
 
-The same triplet is reused in Llama 1, 2, and 3 and DeepSeek-V1, V2, and V3-671B, with no changes. Was Durk Kingma right all along, or can we do better? 
+Llama 1, 2, 3과 DeepSeek-V1, V2, V3-671B 모두 이 세 가지 설정을 그대로 재사용합니다. 처음부터 Durk Kingma가 옳았을까요? 아니면 더 나은 방법이 있을까요?
 
- **Muon in One Line** 
+ **한 줄로 보는 Muon**
 
-Adam is a first-order method, as it only uses the gradients. Muon is a second-order optimizer that acts on the  *matrix view*  of a parameter tensor:
+Adam은 그래디언트만 사용하는 1차 기법입니다. Muon은 파라미터 텐서를 *행렬로 보고* 업데이트하는 2차 옵티마이저입니다.
 
 $$
 
@@ -2121,46 +2121,46 @@ O_t &= \mathrm{NewtonSchulz5}(B_t) \ \approx\ U V^\top \quad \text{if } B_t = U\
 \end{aligned}
 $$
 
-Looking at these equations, you might wonder why is this a second-order method—I only see gradients, and no higher order terms! The second-order optimization actually happens inside the Newton Schulz step, but we won't go into further detail on that here. There are plenty of high-quality resources that explain Muon in depth, so we'll just cover the three key ideas:
+식을 보면 그래디언트만 있고 고차 항은 없는데 왜 2차 기법인지 궁금할 수 있습니다. 실제로 2차 최적화가 일어나는 곳은 뉴턴–슐츠 단계입니다. 여기서 더 깊이 들어가지는 않겠습니다. Muon을 자세히 설명하는 좋은 자료가 많으니 세 가지 핵심 아이디어만 짚어 보겠습니다.
 
 <Sidenote>
 
-To learn more about Muon, we recommend the blog posts by [Keller Jordan](https://kellerjordan.github.io/posts/muon/) and [Jeremy Bernstein](https://jeremybernste.in/writing/deriving-muon) as well as Jia-Bin Huang's [video](https://www.youtube.com/watch?v=bO5nvE289ec), which is a great starting point.
+Muon을 더 알아보려면 [Keller Jordan](https://kellerjordan.github.io/posts/muon/)과 [Jeremy Bernstein](https://jeremybernste.in/writing/deriving-muon)의 블로그 글을 추천합니다. Jia-Bin Huang의 [영상](https://www.youtube.com/watch?v=bO5nvE289ec)으로 시작해도 좋습니다.
 </Sidenote>
 
-1.  **Matrix-wise geometry versus parameter-wise updates:** AdamW preconditions  *per parameter*  (diagonal second moment). Muon treats each weight  *matrix*  as a single object and updates along  $G=UV^{\top}$ , which captures row/column subspace structure.
-1.  **Isotropic steps via orthogonalization:** Decomposing  $G=U\Sigma V^{\top}$  with singular value decomposition (SVD) separates magnitude ( $\Sigma$ ) from directions (the left/right subspaces  $U,V$ ). Replacing  $G$  by  $UV^{\top}$  discards singular values and makes the step  *isotropic*  in the active subspaces. It's a bit counterintuitive at first, since throwing away  $\Sigma$  looks like losing information, but it reduces axis-aligned bias and encourages exploration of directions that would otherwise be suppressed by very small singular values. Whether this kind of exploration bakes different capabilities into the model that aren't obvious if you only look at the loss is still an open question.
-1.  **Empirical tolerance to larger batch sizes:** In practice, Muon often tolerates higher batch sizes. We'll talk about this in more depth in the batch size section, but this might be a key motivator for Muon adoption!
+1. **행렬의 기하 구조와 파라미터별 업데이트:** AdamW는 2차 모멘트의 대각 성분을 이용해 *파라미터별로* 그래디언트의 크기를 조정합니다. Muon은 각 가중치 *행렬*을 하나의 대상으로 보고, 행과 열의 부분공간 구조를 반영하는 $G=UV^{\top}$ 방향으로 업데이트합니다.
+1. **직교화를 통한 등방적 업데이트:** 특잇값 분해(SVD)로 $G=U\Sigma V^{\top}$와 같이 분해하면 크기($\Sigma$)와 방향(좌우 부분공간 $U,V$)을 분리할 수 있습니다. $G$를 $UV^{\top}$로 바꾸면 특잇값을 버리게 되어 활성 부분공간에서 업데이트가 *등방성*을 띱니다. 처음에는 $\Sigma$를 버리면 정보를 잃는 것 같아 직관에 어긋나 보입니다. 하지만 이렇게 하면 특정 축을 선호하는 편향이 줄고, 특잇값이 아주 작아서 억눌렸을 방향으로도 탐색하게 됩니다. 이런 탐색을 통해 모델이 손실만 봐서는 드러나지 않는 다른 능력을 습득하는지는 아직 열린 질문입니다.
+1. **실험에서 확인한 큰 배치에서의 안정성:** 실제로 Muon은 더 큰 배치에서도 잘 작동하는 경우가 많습니다. 배치 크기를 다루는 절에서 더 자세히 살펴보겠지만, 이 특성이 Muon을 채택하는 중요한 이유가 될지도 모릅니다!
 
-For years, the community mostly settled on AdamW, and the optimizer recipes of frontier labs are often kept secret (Qwen don't talk about theirs, for instance), but recently Muon has seen uptake in high-profile releases (e.g., Kimi K2 and GLM-4.5). Hopefully we'll see more open and robust recipes to use it in the future.
+수년간 커뮤니티에서는 주로 AdamW를 써 왔습니다. 최전선의 연구소들은 옵티마이저 설정을 공개하지 않는 경우가 많습니다(Qwen도 어떤 설정을 쓰는지 밝히지 않습니다). 그런데 최근 Kimi K2와 GLM-4.5처럼 주목받는 모델에 Muon이 쓰이기 시작했습니다. 앞으로는 Muon을 안정적으로 활용할 수 있는 설정이 더 많이 공개되면 좋겠습니다.
 
-There is a wild zoo of optimizers, and the only thing researchers are more creative at than combining possible momentums and derivates is coming up with names for them: Shampoo, SOAP, PSGD, CASPR, DION, Sophia, Lion… even AdamW has its own variants, like NAdamW, StableAdamW, and so on. Diving into all these optimizers would be worth its own guide, but we'll keep that for another time. In the meantime, we recommend the amazing paper by Stanford's Marin team [@wen2025fantasticpretrainingoptimizers], who benchmarked many different optimizers to show how important hyperparameter tuning is when doing comparisons.
+옵티마이저의 세계는 참 다채롭습니다. 온갖 모멘텀과 도함수를 조합할 때보다 연구자들이 더 창의력을 발휘하는 순간이 있다면 바로 이름을 지을 때입니다. Shampoo, SOAP, PSGD, CASPR, DION, Sophia, Lion… AdamW에도 NAdamW, StableAdamW 같은 변형이 있습니다. 하나씩 파고들면 가이드 한 권이 나올 테니 그 이야기는 다음 기회로 미루겠습니다. 그동안 읽어 볼 만한 자료로 스탠퍼드 Marin 팀의 훌륭한 논문 [@wen2025fantasticpretrainingoptimizers]을 추천합니다. 다양한 옵티마이저를 벤치마크해 비교할 때 하이퍼파라미터 조정이 얼마나 중요한지 보여 줍니다.
 
-A question that goes hand in hand with almost every optimizer choice is how strong the weight update should be. This is determined by the learning rate, which typically appears as a scalar in the optimizer equations. This is a seemingly simple topic, but as you'll see in the next section, there are many facets to it.
+어느 옵티마이저를 고르든 거의 항상 따라오는 질문이 있습니다. 가중치를 얼마나 크게 업데이트해야 할까요? 그 크기를 결정하는 값이 학습률이며, 옵티마이저의 식에는 보통 스칼라로 나타납니다. 단순해 보이지만 다음 절에서 보듯 고려할 점이 많습니다.
 
-#### Learning Rate
+#### 학습률
 
-The learning rate (LR) is one of the most important hyperparameters we have to set. At each training step, it controls how much we adjust our model weights based on the computed gradients. Choosing a learning rate that's too low will make training painfully slow, and we risk getting trapped in a bad local minimum. The loss curves will look flat, and we'll burn through our compute budget without making meaningful progress. On the other hand, setting the learning rate too high causes the optimizer to take massive steps that overshoot optimal solutions and never converge (or the unimaginable may happen: the loss diverges and shoots to the moon).
+학습률(LR)은 우리가 정해야 할 가장 중요한 하이퍼파라미터 중 하나입니다. 각 학습 스텝에서 계산한 그래디언트를 바탕으로 모델 가중치를 얼마나 조정할지 결정합니다. 학습률이 너무 낮으면 학습이 답답할 만큼 느려지고 좋지 않은 국소 최솟값에 갇힐 수 있습니다. 손실 곡선은 평평해 보이고 이렇다 할 진전 없이 연산 예산만 소진하게 됩니다. 반대로 학습률이 너무 높으면 옵티마이저가 한 번에 너무 멀리 움직여 최적해를 지나쳐 버리고 끝내 수렴하지 않습니다. 심하면 손실이 발산해 달까지 치솟을지도 모릅니다.
 
-But the best learning rate isn't even constant, since the learning dynamics change during training. High learning rates work early, when we're far from good solutions, but cause instability near convergence. This is where learning rate schedules come in: Warm up from zero to avoid early chaos, then decay to settle into a good minimum. These patterns (warmup + cosine decay, for example) have been validated for neural network training over many years.
+게다가 학습을 진행하면서 학습 양상이 달라지므로 가장 좋은 학습률도 계속 바뀝니다. 좋은 해에서 멀리 떨어진 초기에는 높은 학습률이 효과적이지만, 수렴에 가까워지면 학습이 불안정해집니다. 이때 학습률 스케줄을 씁니다. 초기에 학습이 요동치지 않도록 0에서부터 워밍업하고, 이후에는 좋은 최솟값에 안착하도록 학습률을 낮춥니다. 워밍업과 코사인 감쇠를 조합하는 등의 방식은 오랜 세월 신경망 학습에서 검증됐습니다.
 
-<Note title="Warmup steps" emoji="💡" variant="info">
+<Note title="워밍업 스텝 수" emoji="💡" variant="info">
 
-Most modern LLMs use a fixed number of warmup steps (for example, 2,000) regardless of model size and length of training, as shown in the [table](#llms-landscape-pretrain) at the start of the "Architecture Choices" section. Using 1–5% of training steps is common for very short training runs. For longer runs, we've found that increasing the number of warmup steps doesn't generally affect performance.
+‘아키텍처 선택’ 절 첫머리의 [표](#llms-landscape-pretrain)를 보면, 요즘 LLM은 대부분 모델 크기와 학습 기간에 관계없이 워밍업 스텝 수를 고정합니다(예를 들어 2,000스텝). 학습이 아주 짧을 때는 전체 스텝의 1-5%를 쓰는 경우가 많습니다. 더 길게 학습할 때는 워밍업 스텝 수를 늘려도 대체로 성능에 영향이 없었습니다.
 </Note>
 
-Let's look at some common schedules, then discuss how to pick the peak value.
+몇 가지 흔한 스케줄을 살펴보고 최대 학습률을 고르는 방법을 알아보겠습니다.
 
- **Learning Rate Schedules: Beyond Cosine Decay** 
+ **코사인 감쇠를 넘어서는 학습률 스케줄**
 
-It has been known for years that changing the learning rate helps convergence [@smith2018superconvergencefasttrainingneural], and for a long time cosine decay [@loshchilov2017sgdrstochasticgradientdescent] was the go-to schedule for training LLMs: Start at a peak learning rate after warmup, then smoothly decrease it following a cosine curve. This approach is simple and works well. Its main disadvantage is inflexibility; we need to know how many steps we're going to train for up front, as the cosine cycle length must match the total training duration. This becomes a problem in several common scenarios, such as if your model hasn't plateaued yet and you get access to more compute and want to train longer, or you're running scaling laws and need to train the same model on different token counts. Cosine decay forces you to restart from scratch.
+학습률을 바꾸면 수렴에 도움이 된다는 사실은 오래전부터 알려져 있습니다 [@smith2018superconvergencefasttrainingneural]. 오랫동안 LLM 학습의 기본 스케줄은 코사인 감쇠였습니다 [@loshchilov2017sgdrstochasticgradientdescent]. 워밍업을 마친 뒤 최대 학습률에서 시작해 코사인 곡선을 따라 매끄럽게 낮추는 방식입니다. 간단하면서도 효과적이지만 유연성이 부족합니다. 코사인 주기 길이를 전체 학습 기간에 맞춰야 하므로 시작 전에 총 몇 스텝을 학습할지 알아야 합니다. 성능이 아직 정체되지 않은 상태에서 연산 자원을 더 확보해 학습을 연장하고 싶을 때나, 스케일링 법칙을 구하려고 같은 모델을 여러 토큰 수로 학습해야 할 때 자주 문제가 됩니다. 코사인 감쇠를 쓰면 처음부터 다시 시작해야 합니다.
 
 <Sidenote>
 
-Interestingly, this inflexibility skewed early scaling laws research [@kaplan2020scalinglawsneurallanguage] because the authors used a fixed cosine schedule length when training models on varying token counts, underestimating the impact of data size. The Chinchilla study [@hoffmann2022trainingcomputeoptimallargelanguage] corrected this and matched the schedule length to each model's actual training duration.
+흥미롭게도 이 제약 때문에 초기 스케일링 법칙 연구 [@kaplan2020scalinglawsneurallanguage]의 결과가 한쪽으로 치우쳤습니다. 저자들이 토큰 수를 바꿔 가며 모델을 학습하면서도 코사인 스케줄 길이는 고정해 데이터 규모의 영향을 과소평가했기 때문입니다. Chinchilla 연구 [@hoffmann2022trainingcomputeoptimallargelanguage]에서는 각 모델의 실제 학습 기간에 스케줄 길이를 맞춰 이 문제를 바로잡았습니다.
 </Sidenote>
 
-Many teams now use schedules where you don't need to start decaying immediately after warmup. This is the case for the  *warmup–stable–decay (WSD)*  [@hu2024minicpmunveilingpotentialsmall] and  *multi-step*  [@deepseekai2024deepseekllmscalingopensource] variants shown in the following plot: You maintain a constant high learning rate for most of training, then either sharply decay in the final phase (typically the last 10–20% of tokens) for WSD or do discrete drops (steps) to decrease the learning rate. For example, DeepSeek LLM uses a multi-step learning rate schedule with drops at 80% and 90% of training. 
+요즘에는 워밍업 직후부터 학습률을 낮출 필요가 없는 스케줄을 쓰는 팀이 많습니다. 아래 그래프의 *워밍업–유지–감쇠(WSD)* [@hu2024minicpmunveilingpotentialsmall]와 *다단계* 스케줄 [@deepseekai2024deepseekllmscalingopensource]이 그런 예입니다. 둘 다 학습 대부분의 구간에서 높은 학습률을 일정하게 유지합니다. WSD는 마지막 구간(보통 전체 토큰의 마지막 10-20%)에 학습률을 가파르게 낮추고, 다단계 스케줄은 몇 차례에 걸쳐 계단식으로 낮춥니다. 예를 들어 DeepSeek LLM은 학습의 80%와 90% 지점에서 학습률을 낮추는 다단계 스케줄을 씁니다.
 
 <HtmlEmbed 
   src="embeds/d3-line-chart.html" 
@@ -2171,27 +2171,27 @@ Many teams now use schedules where you don't need to start decaying immediately 
     runColumn: "run_name",
     xScaleType: "linear",
     yScaleType: "linear",
-    xAxisLabel: "Step",
-    yAxisLabel: "Learning Rate",
-    title: "Learning Rate Schedules"
+    xAxisLabel: "학습 스텝",
+    yAxisLabel: "학습률",
+    title: "학습률 스케줄"
   }} 
 />
 
 
 
-These schedules offer practical advantages over cosine decay. We can extend training mid-run without restarting, decay early to get a clearer view of training progress, and run scaling law experiments across different token counts within a single main training run. Moreover, studies show that both WSD and multi-step match the performance of cosine decay [@wsdhagele; @deepseekai2024deepseekllmscalingopensource] while being more practical for real-world training scenarios. 
+이런 스케줄은 코사인 감쇠보다 실용적인 이점이 있습니다. 학습 도중에 처음부터 다시 시작할 필요 없이 기간을 늘릴 수 있고, 학습률을 일찍 낮춰 학습이 얼마나 진전됐는지 더 분명히 확인할 수도 있습니다. 한 번의 본 학습으로 여러 토큰 수에 대해 스케일링 법칙 실험도 할 수 있습니다. 연구에 따르면 WSD와 다단계 스케줄 모두 코사인 감쇠에 필적하는 성능을 내면서 [@wsdhagele; @deepseekai2024deepseekllmscalingopensource] 실제 학습 상황에서 더 쓰기 편합니다.
 
 <Sidenote>
 
-Recently, GLM-4.5 [@glm45] mentions that WSD performs worse than cosine decay on general benchmarks (SimpleQA, MMLU), but they don't provide any results.
+최근 GLM-4.5 기술 보고서 [@glm45]는 일반 벤치마크(SimpleQA, MMLU)에서 WSD 성능이 코사인 감쇠보다 낮았다고 언급하지만, 결과를 제시하지는 않습니다.
 </Sidenote>
 
-But you probably noticed that these schedules introduce new hyperparameters compared to cosine decay. How long should the decay phase last in WSD? And how long should each step be in the multi-step variant?
+그런데 눈치채셨겠지만 이 스케줄에는 코사인 감쇠에 없던 하이퍼파라미터가 생깁니다. WSD의 감쇠 구간은 얼마나 길어야 할까요? 다단계 스케줄에서는 각 단계를 얼마나 길게 잡아야 할까요?
 
--  **For WSD:**  The required cooldown duration to match cosine performance decreases with longer training runs. In general, it is recommended to allocate 10–20% of total tokens to the decay phase [@wsdhagele]. We will confirm this setup matches cosine in our ablations in the next section.
--  **For multi-step:**  DeepSeek LLM's ablations revealed that while their baseline 80/10/10 split (stable until 80%, first step from 80–90%, second step from 90–100%) matches cosine, it's possible to outperform it by tweaking these proportions (e.g., using 70/15/15 and 60/20/20 splits).
+- **WSD:** 학습이 길어질수록 코사인 감쇠와 같은 성능을 내는 데 필요한 쿨다운 구간의 비중은 줄어듭니다. 일반적으로 전체 토큰의 10-20%를 감쇠 구간에 배정하도록 권장합니다 [@wsdhagele]. 다음 절에서는 어블레이션을 통해 이 설정으로 코사인 감쇠와 같은 성능을 내는지 확인합니다.
+- **다단계 스케줄:** DeepSeek LLM의 어블레이션에서 기본 설정인 80/10/10(80%까지 유지, 80-90%는 첫 번째 단계, 90-100%는 두 번째 단계)은 코사인 감쇠와 같은 성능을 냈습니다. 구간 비율을 70/15/15나 60/20/20 등으로 바꾸면 코사인 감쇠보다 좋은 성능을 낼 수도 있었습니다.
 
-We can get even more innovative with learning rate schedules. Let's look at the schedules used in some of the other DeepSeek models:
+학습률 스케줄을 더 창의적으로 설계할 수도 있습니다. 다른 DeepSeek 모델에서 사용한 스케줄을 살펴보겠습니다.
 
 <HtmlEmbed 
   src="embeds/d3-line-chart.html" 
@@ -2202,28 +2202,28 @@ We can get even more innovative with learning rate schedules. Let's look at the 
     runColumn: "run_name",
     xScaleType: "linear",
     yScaleType: "linear",
-    xAxisLabel: "Step",
-    yAxisLabel: "Learning Rate (×10⁻⁴)",
-    title: "DeepSeek Multi-Step Learning Rate Schedule Comparison"
+    xAxisLabel: "학습 스텝",
+    yAxisLabel: "학습률 (×10⁻⁴)",
+    title: "DeepSeek 모델별 다단계 학습률 스케줄 비교"
   }} 
 />
 
 
 
-DeepSeek LLM used the baseline multi-step schedule (80/10/10). DeepSeek V2 [@deepseekv2] adjusted the proportions to 60/30/10, giving more time to the first decay step. DeepSeek V3 [@deepseekv3] took the most creative approach: Instead of maintaining a constant learning rate followed by two sharp steps, it transitioned from the constant phase with a cosine decay (from 67% to 97% of training), then applied a brief constant phase before the final sharp step.
+DeepSeek LLM은 기본 다단계 스케줄(80/10/10)을 사용했습니다. DeepSeek V2 [@deepseekv2]는 비율을 60/30/10으로 바꿔 학습률을 처음 낮춘 단계에 더 많은 시간을 배정했습니다. 가장 창의적으로 접근한 모델은 DeepSeek V3 [@deepseekv3]입니다. 학습률을 일정하게 유지하다가 두 번에 걸쳐 급격히 낮추는 방식에 변화를 줬습니다. 일정하게 유지하던 학습률을 코사인 곡선을 따라 낮춘 뒤(전체 학습의 67%에서 97%까지), 잠시 일정하게 유지하다가 마지막에 급격히 낮췄습니다.
 
-<Note title="DeepSeek schedule changes" variant="info">
+<Note title="DeepSeek의 스케줄 변경" variant="info">
 
-DeepSeek-V2 and V3's technical reports don't include ablations on these schedule changes. For your setup, start with simple WSD or multi-step schedules, then consider tuning the parameters through ablations.
+DeepSeek-V2와 V3의 기술 보고서에는 스케줄 변경에 관한 어블레이션 결과가 없습니다. 여러분의 환경에서는 간단한 WSD나 다단계 스케줄로 시작한 뒤, 어블레이션을 통해 파라미터를 조정할지 검토해 보세요.
 </Note>
 
-Let's stop our survey of exotic learning rate schedules here and burn some GPU hours to determine what works in practice!
+색다른 학습률 스케줄 구경은 이쯤 하고, 이제 GPU 시간을 좀 써서 실제로 무엇이 효과가 있는지 알아봅시다!
 
- **Ablation—WSD Matches Cosine** 
+ **어블레이션 — 코사인 감쇠에 필적하는 WSD**
 
-It's time for an ablation. Let's test whether WSD actually matches cosine's performance. We won't show multi-step ablations here, but we recommend you check out DeepSeek LLM's ablations, which show that multi-step matches cosine with different phase splits. 
+이제 어블레이션을 해 볼 차례입니다. WSD가 실제로 코사인 감쇠만큼 성능을 내는지 확인해 보겠습니다. 여기서는 다단계 스케줄의 어블레이션을 다루지 않지만, 구간 비율을 다양하게 바꿔도 코사인 감쇠와 대등한 성능을 보인 DeepSeek LLM의 어블레이션을 살펴보세요.
 
-We'll compare cosine decay against WSD with two decay windows: 10% and 20%.
+감쇠 구간을 각각 10%와 20%로 잡은 두 WSD 설정을 코사인 감쇠와 비교하겠습니다.
 
 <HtmlEmbed
 src="embeds/d3-line-chart.html"
@@ -2232,7 +2232,7 @@ dataUrl: "./data/wsd_loss.csv",
 xDomain: [0, 46e9],
 yDomain: [2.1, 2.7],
 smoothing: true,
-title: "WSD Loss"
+title: "WSD 손실"
 }}
 />
 
@@ -2258,26 +2258,26 @@ smoothingWindow: 5
 
 
 
-The evaluation results show similar final performance across all three configurations. Looking at the loss and evaluation curves (specifically HellaSwag), we see an interesting pattern: Cosine achieves better loss and evaluation scores during the stable phase (before WSD's decay begins). However, once WSD enters its decay phase, there's an almost linear improvement in both loss and downstream metrics, allowing WSD to catch up to cosine by the end of training.
+평가 결과를 보면 세 설정의 최종 성능은 비슷합니다. 손실과 평가 점수 곡선(특히 HellaSwag)을 보면 흥미로운 패턴이 보입니다. WSD가 학습률을 일정하게 유지하는 구간, 즉 감쇠를 시작하기 전까지는 코사인 감쇠 쪽의 손실이 더 낮고 평가 점수도 더 높습니다. 하지만 WSD가 감쇠 구간에 들어서면 손실과 다운스트림 지표가 모두 거의 선형으로 개선되어 학습이 끝날 무렵에는 코사인 감쇠를 따라잡습니다.
 
-This confirms that WSD's 10–20% decay window is sufficient to match cosine's final performance while maintaining the flexibility to extend training mid-run. We opted for WSD with 10% decay for SmolLM3.
+WSD에서는 학습 도중에 기간을 연장할 수 있는 유연성을 확보하면서도, 마지막 10-20% 구간에서 학습률을 낮추는 것만으로 코사인 감쇠와 같은 최종 성능을 낼 수 있음을 확인했습니다. SmolLM3에서는 감쇠 구간이 10%인 WSD를 택했습니다.
 
-<Note title="Comparing models trained with different schedulers mid-run" emoji="⚠️" variant="danger">
+<Note title="스케줄이 다른 모델을 학습 도중에 비교할 때" emoji="⚠️" variant="danger">
 
-If you're comparing intermediate checkpoints between cosine and WSD during the stable phase, make sure to apply a decay to the WSD checkpoint for a fair comparison.
+WSD가 학습률을 일정하게 유지하는 구간에서 코사인 감쇠와 WSD의 중간 체크포인트를 비교하려면, 공정한 비교를 위해 WSD 체크포인트에도 학습률 감쇠를 적용하세요.
 </Note>
 
-Now that we have a good overview of popular learning rate schedules, the next question is: What should the learning rate actually be?
+널리 쓰이는 학습률 스케줄을 살펴봤으니 이제 다음 질문에 답해 봅시다. 실제 학습률은 얼마로 잡아야 할까요?
 
- **Finding the Optimal Learning Rate** 
+ **최적 학습률 찾기**
 
-To find the optimal learning rate for our specific scheduler and training setup, we could run learning rate sweeps on short ablations like we did for architecture choices. But optimal learning rate depends on training duration: The learning rate that converges fastest in a short ablation might not be the best one for the full run. And we can't afford to run expensive multi-week trainings multiple times just to test different learning rates. 
+우리가 쓸 스케줄과 학습 환경에 맞는 최적 학습률을 찾으려면, 아키텍처를 고를 때처럼 짧은 어블레이션으로 여러 학습률을 시험해 볼 수 있습니다. 다만 최적 학습률은 학습 기간에 따라 달라집니다. 짧은 어블레이션에서 가장 빨리 수렴한 학습률이 전체 학습에서도 가장 좋으리라는 보장은 없습니다. 그렇다고 학습률을 시험하려고 몇 주씩 걸리는 비싼 학습을 몇 번이고 반복할 여유는 없습니다.
 
-Let's start by looking at some simple sweeps we can run that help us quickly rule out learning rates that are much too high or low. Then we'll discuss scaling laws for hyperparameters.
+먼저 너무 높거나 낮은 학습률을 빠르게 걸러낼 수 있는 간단한 탐색 실험부터 살펴보겠습니다. 그다음 하이퍼파라미터의 스케일링 법칙을 다루겠습니다.
 
- **Ablation—LR Sweeps** 
+ **어블레이션 — 학습률 탐색**
 
-To illustrate the impact of learning rates, let's do at a sweep on our 1B ablation model trained on 45B tokens. We'll train the same model, under the same setup, with four different learning rates: 1e-4, 5e-4, 5e-3, 5e-2. The results clearly show the dangers at both extremes.
+학습률의 영향을 살펴보기 위해 1B 어블레이션 모델을 45B 토큰으로 학습하면서 학습률을 바꿔 봅시다. 같은 모델과 같은 환경에서 학습률만 1e-4, 5e-4, 5e-3, 5e-2의 네 가지 값으로 달리해 학습합니다. 결과를 보면 양 극단의 위험이 분명하게 드러납니다.
 
 <HtmlEmbed
 src="embeds/d3-line-chart.html"
@@ -2286,7 +2286,7 @@ dataUrl: "./data/lr_loss.csv",
 xDomain: [0, 45e9],
 yDomain: [2.1, 10],
 smoothing: true,
-title: "Learning Rate Loss"
+title: "학습률에 따른 손실"
 }}
 />
 
@@ -2312,47 +2312,47 @@ smoothingWindow: 15
 
 
 
-LR 5e-2 diverges almost immediately: The loss spikes early and never recovers, making the model unusable. LR 1e-4 is too conservative; while it trains stably, it converges much more slowly than the other learning rates. The middle-ground options, LR 5e-4 and LR 5e-3, show better convergence and comparable performance.
+학습률 5e-2에서는 거의 곧바로 발산합니다. 초반에 손실이 치솟은 뒤 끝내 회복되지 않아 모델을 쓸 수 없습니다. 학습률 1e-4는 너무 보수적입니다. 학습은 안정적이지만 다른 학습률보다 수렴이 훨씬 느립니다. 중간에 있는 학습률 5e-4와 5e-3에서는 더 잘 수렴하고 두 설정의 성능도 비슷합니다.
 
-For SmolLM3, we trained 3B models on 100B tokens with AdamW using the WSD schedule, comparing several learning rates. We found that 2e-4 converged much faster than 1e-4 in both loss and downstream performance, while 3e-4 was only slightly better than 2e-4. The marginal gains from 3e-4 came with increased risk of instability during long training runs, so we chose 2e-4 as our sweet spot.
+SmolLM3에서는 AdamW와 WSD 스케줄로 3B 모델을 100B 토큰에 학습시키면서 학습률을 여러 값으로 바꿔 비교했습니다. 손실과 다운스트림 성능 모두 2e-4에서 1e-4보다 훨씬 빨리 수렴했지만, 3e-4는 2e-4보다 조금 나은 정도였습니다. 3e-4로 얻는 이득은 작은 데 비해 긴 학습에서 불안정해질 위험이 커서, 균형이 좋은 2e-4를 선택했습니다.
 
-These sweeps help us rule out learning rates that are clearly too high (divergence) or too low (slow convergence)—but running sweeps for every model size gets expensive quickly, and more importantly, the results for these shorter training runs may not translate exactly to what we see in a full run. This is where scaling laws become invaluable.
+이렇게 탐색하면 학습률이 지나치게 높아 발산하거나 지나치게 낮아 수렴이 느린 경우를 걸러낼 수 있습니다. 하지만 모델 크기마다 탐색을 반복하면 비용이 금세 불어납니다. 더 중요한 점은 짧은 학습의 결과가 전체 학습에서 그대로 재현되지 않을 수 있다는 것입니다. 이럴 때 스케일링 법칙이 큰 도움이 됩니다.
 
-Before we dive into scaling laws for hyperparameters, though, let's discuss the other critical hyperparameter that interacts with learning rate: batch size.
+하이퍼파라미터의 스케일링 법칙을 자세히 살펴보기 전에, 학습률과 상호작용하는 또 하나의 중요한 하이퍼파라미터인 배치 크기부터 알아보겠습니다.
 
-#### Batch Size
+#### 배치 크기
 
-The batch size is the number of samples processed before updating model weights. It directly impacts both training efficiency and final model performance. Increasing the batch size improves throughput if your hardware and training stack scale well across devices. But beyond a certain point, larger batches start to hurt data efficiency: The model needs more total tokens to reach the same loss. The breakpoint where this happens is known as the  *critical batch size*  [@mccandlish2018empiricalmodellargebatchtraining].
+배치 크기는 모델 가중치를 한 번 업데이트하기 전에 처리하는 샘플 수입니다. 학습 효율과 모델의 최종 성능에 모두 직접적인 영향을 줍니다. 작업을 분산할 때 장치 수에 맞춰 하드웨어와 학습 소프트웨어의 처리 성능도 높아진다면 배치 크기를 키워 처리량을 높일 수 있습니다. 하지만 어느 지점을 넘으면 배치가 커질수록 데이터 효율이 떨어지기 시작합니다. 같은 손실에 도달하는 데 필요한 총 토큰 수가 늘어나는 겁니다. 이렇게 양상이 바뀌는 지점을 *임계 배치 크기*라고 합니다 [@mccandlish2018empiricalmodellargebatchtraining].
 
 <Sidenote>
 
-Throughput is the number of tokens processed per second during training.
+처리량은 학습 중 초당 처리하는 토큰 수입니다.
 </Sidenote>
 
-There are two ways to scale the batch size:
+배치 크기를 키울 때는 두 가지 경우를 생각해 볼 수 있습니다.
 
--  **Increasing the batch size while staying below critical:**  After increasing the batch size and retuning the learning rate, you reach the same loss with the same number of tokens as for the smaller batch size run; no data is wasted.
--  **Increasing the batch size while staying above critical:** Larger batches start to sacrifice data efficiency; reaching the same loss now requires more total tokens (and thus more money), even if wall-clock time drops, because more chips are busy.
+- **임계값 아래에서 배치 크기를 늘리는 경우:** 배치 크기를 키우고 학습률을 다시 조정하면 작은 배치로 학습할 때와 같은 수의 토큰으로 같은 손실에 도달합니다. 데이터를 낭비하지 않습니다.
+- **임계값 위에서 배치 크기를 늘리는 경우:** 배치가 커지면서 데이터 효율이 떨어지기 시작합니다. 더 많은 칩을 가동해 실제 걸리는 시간은 줄더라도, 같은 손실에 도달하려면 총 토큰 수가 늘어나고 그만큼 돈도 더 듭니다.
 
-Let's consider why retuning the learning rate is necessary and see how to estimate the critical batch size. 
+왜 학습률을 다시 조정해야 하는지 생각해 보고, 임계 배치 크기를 추정하는 방법을 살펴보겠습니다.
 
-When the batch size grows, each mini-batch gradient becomes a better estimate of the true gradient. This allows you to safely take a larger step (i.e., increase the learning rate) and reach a target loss in fewer updates. The question is how to scale it.
+배치 크기가 커지면 각 미니배치에서 구한 그래디언트가 실제 그래디언트에 더 가까워집니다. 덕분에 한 번에 더 큰 보폭으로 안전하게 움직일 수 있습니다. 즉, 학습률을 높여 더 적은 횟수의 업데이트로 목표 손실에 도달할 수 있습니다. 문제는 학습률을 얼마나 높이느냐입니다.
 
-Averaging over  $B$  samples:
+$B$개의 샘플에 대해 평균을 내면 다음과 같습니다.
 
-- Batch gradient:  $\tilde{g}_{B} \;=\; \frac{1}{B}\sum_{i=1}^{B} \tilde{g}^{(i)}$ 
-- Mean stays the same:  $\mathbb{E}\!\left[\tilde{g}_{B}\right] \;=\; g$ 
-- But covariance shrinks:  $\mathrm{Cov}\!\left(\tilde{g}_{B}\right) \;=\; \frac{\Sigma}{B}$ 
+- 배치 그래디언트는 $\tilde{g}_{B} \;=\; \frac{1}{B}\sum_{i=1}^{B} \tilde{g}^{(i)}$입니다.
+- 평균은 $\mathbb{E}\!\left[\tilde{g}_{B}\right] \;=\; g$로 그대로입니다.
+- 반면 공분산은 $\mathrm{Cov}\!\left(\tilde{g}_{B}\right) \;=\; \frac{\Sigma}{B}$로 줄어듭니다.
 
-The SGD parameter update is:
+SGD의 파라미터 업데이트는 다음과 같습니다.
 
 -  $\Delta w \;=\; -\,\eta \,\tilde{g}_{B}$ 
 
-The variance of this update is proportional to:
+이 업데이트의 분산은 다음과 같은 비례 관계를 따릅니다.
 
 -  $\mathrm{Var}(\Delta w) \;\propto\; \eta^{2}\,\frac{\Sigma}{B}$ 
 
-So to keep the update variance roughly constant, if you scale the batch size by  $k$ , you want to scale the learning rate by  $\sqrt k$ . Let's say you've computed your optimal batch size and learning rate, and you've found that increasing to the critical batch size is possible and increases throughput. You'll need to adapt the optimal learning rate as well:
+따라서 업데이트의 분산을 대략 일정하게 유지하려면 배치 크기를 $k$배로 늘릴 때 학습률을 $\sqrt k$배로 높이면 됩니다. 최적 배치 크기와 학습률을 구한 뒤, 배치를 임계 크기까지 키울 여유가 있고 그렇게 하면 처리량도 늘어난다는 점을 확인했다고 합시다. 그러면 최적 학습률도 다음과 같이 조정해야 합니다.
 
 $$
 B_{\text{critical}} \;\rightarrow\; kB_{\text{optimal}} \quad\Rightarrow\quad \eta_{\text{critical}} \;\rightarrow\; \sqrt{k}\eta_{\text{optimal}}
@@ -2360,127 +2360,127 @@ $$
 
 <Sidenote>
 
-See Jianlin Su's [amazing series](https://kexue.fm/archives/11260) for more math on this.
+수학적 배경을 더 자세히 알고 싶다면 Jianlin Su의 [훌륭한 연재 글](https://kexue.fm/archives/11260)을 읽어 보세요.
 </Sidenote>
 
-A useful rule of thumb for optimizers like AdamW or Muon is  *square root*   *LR scaling*  as batch size grows, but exactly how this works depends on the optimizer. For instance, using AdamW, there are interactions with  `beta1` / `beta2`  that can introduce very different behavior. A pragmatic alternative suggested by @merrill2025criticalbatchsizerevisited is to branch training for a brief window: Keep one run at the original batch size, start a second with the larger batch size and a rescaled LR, and only adopt the larger size if the two loss curves align after the rescale. They warm up the learning rate and reset the optimizer state when switching the batch size. They also set a tolerance and a time window to decide whether the losses "match," with both knobs chosen empirically. Their results indicate that the  $B_\text{simple}$  estimate—which is also noisy—is underestimating the "actual" critical batch size. This gives you a quick, low-risk way to check that the new batch/LR pair preserves training dynamics.
+AdamW나 Muon 같은 옵티마이저에는 배치 크기를 늘린 비율의 *제곱근*에 비례해 *학습률을 높이는* 경험 법칙이 유용합니다. 다만 정확한 양상은 옵티마이저에 따라 다릅니다. 예를 들어 AdamW에서는 `beta1`, `beta2`와의 상호작용에 따라 학습 양상이 크게 달라질 수 있습니다. @merrill2025criticalbatchsizerevisited 에서는 실용적인 대안으로 학습을 잠시 두 갈래로 나눠 보자고 제안합니다. 한쪽에서는 원래 배치 크기로 학습을 계속하고, 다른 쪽에서는 더 큰 배치와 그에 맞춰 조정한 학습률로 학습을 시작합니다. 조정 후 두 손실 곡선이 일치할 때만 큰 배치를 채택합니다. 연구진은 배치 크기를 바꿀 때 학습률 워밍업을 거치고 옵티마이저 상태를 초기화합니다. 손실이 ‘일치’하는지 판정할 허용 오차와 관찰 기간도 실험을 통해 정합니다. 연구 결과를 보면 $B_\text{simple}$ 추정값은 잡음도 있고 ‘실제’ 임계 배치 크기를 과소평가하는 것으로 보입니다. 두 갈래로 나눠 보는 방법을 쓰면 새 배치 크기와 학습률 조합에서도 학습 양상이 유지되는지 큰 위험 없이 빠르게 확인할 수 있습니다.
 
-The critical batch size isn't fixed; it grows as training progresses. Early in training, the model is making big gradient steps, so  $\lVert g\rVert^2$  is big. That means  $B_\text{simple}$  is small, hence the model has a smaller critical batch size. Later, as the model updates stabilize, larger batches become more effective. This is why some large-scale training runs don't keep the batch size constant and use what we call  *batch size warmup* . For example, DeepSeek-V3 begins with a 12.6M batch for the first ~469B tokens, then increases it to 62.9M for the remainder of training. A batch size warmup schedule like this serves the same purpose as learning rate warmup: It keeps the model on the efficient frontier as the gradient noise scale increases, maintaining stable and efficient optimization throughout.
+임계 배치 크기는 고정된 값이 아니며 학습이 진행될수록 커집니다. 학습 초기에는 모델이 그래디언트 방향으로 크게 움직이므로 $\lVert g\rVert^2$가 큽니다. 따라서 $B_\text{simple}$은 작고 모델의 임계 배치 크기도 작습니다. 이후 모델 업데이트가 안정되면 더 큰 배치가 효과를 발휘합니다. 이런 이유로 일부 대규모 학습에서는 배치 크기를 고정하는 대신 *배치 크기 워밍업*을 사용합니다. 예를 들어 DeepSeek-V3는 처음 약 469B 토큰을 배치 크기 12.6M으로 학습한 뒤 나머지 구간에서는 62.9M으로 늘립니다. 이런 배치 크기 워밍업 스케줄은 학습률 워밍업과 목적이 같습니다. 그래디언트 잡음 척도가 커지는 동안에도 모델이 학습 효율을 최대한 유지할 수 있도록 해, 처음부터 끝까지 안정적이고 효율적으로 최적화합니다.
 
-Another interesting approach is treating the loss as a proxy for the critical batch size. MiniMax-01 used this, and in the last stage they trained with a 128M batch size! They didn't increase the learning rate, so their batch size schedule acted like a learning rate decay schedule.
+임계 배치 크기를 가늠하는 대리 지표로 손실을 쓰는 방법도 흥미롭습니다. MiniMax-01은 이 방법을 써서 마지막 단계에서는 무려 128M의 배치 크기로 학습했습니다! 학습률을 높이지 않았기 때문에 배치 크기 스케줄이 학습률 감쇠 스케줄처럼 작용했습니다.
 
-<Note title="Tuning batch size and learning rate" variant="info">
+<Note title="배치 크기와 학습률 조정" variant="info">
 
-In practice, here's how you can choose the batch size and learning rate:
-- First, pick the batch size and learning rate you consider optimal, either based on scaling laws (see the next section) or from the literature. 
-- Then tune the batch size to see if you can improve the training throughput. 
+실제로는 다음과 같이 배치 크기와 학습률을 고를 수 있습니다.
+- 먼저 스케일링 법칙(다음 절 참고)이나 문헌을 근거로 최적이라고 생각하는 배치 크기와 학습률을 고릅니다.
+- 그런 다음 배치 크기를 조정해 학습 처리량을 높일 수 있는지 확인합니다.
 
-The key insight is that there's often a range between your starting batch size 
-and the critical batch size where you can increase it to improve hardware 
-utilization without sacrificing data efficiency, but you must retune the learning 
-rate accordingly. 
-If the throughput gain isn't significant, or if testing a larger batch size 
-(with rescaled learning rate) shows worse data efficiency, stick with the previous values.
+처음 선택한 배치 크기부터
+임계 배치 크기 사이에는 흔히 배치를 더 키워 하드웨어
+활용률을 개선하면서도 데이터 효율을 유지할 여지가 있습니다. 다만 학습률도
+그에 맞춰 다시 조정해야 합니다.
+처리량이 눈에 띄게 늘지 않거나 더 큰 배치 크기를
+그에 맞게 조정한 학습률로 시험했을 때 데이터 효율이 떨어진다면 이전 값을 유지하세요.
 </Note>
 
-As mentioned in the note above, one way to pick your starting points for the batch size and learning rate is through scaling laws. Let's see how these laws work.
+앞서 언급했듯이 배치 크기와 학습률의 초깃값을 고르는 한 가지 방법은 스케일링 법칙을 활용하는 것입니다. 어떻게 활용하는지 살펴보겠습니다.
 
-####  **Scaling Laws for Hyperparameters** 
+####  **하이퍼파라미터의 스케일링 법칙**
 
-The optimal learning rate and batch size aren't just about model architecture and size; they also depend on compute budget, which is determined by the number of model parameters and the number of training tokens. In practice, these factors interact to determine how aggressive or conservative our updates should be. This is where scaling laws come in.
+최적 학습률과 배치 크기는 모델의 아키텍처와 크기뿐 아니라 연산 예산에도 좌우됩니다. 연산 예산은 모델 파라미터 수와 학습 토큰 수로 결정됩니다. 실제로는 이런 요인이 서로 맞물려 업데이트를 얼마나 과감하게 또는 보수적으로 해야 하는지가 정해집니다. 이때 스케일링 법칙이 유용합니다.
 
-Scaling laws establish empirical relationships describing how model performance evolves as we increase training scale, whether that's through larger models or more training data (see the section at the end of this chapter for the full history). But they can also help us predict how to adjust key hyperparameters, like the learning rate and batch size, as we scale up training, as was demonstrated in recent work by [DeepSeek LLM](https://arxiv.org/abs/2401.02954) and [Qwen2.5](https://arxiv.org/abs/2412.15115). This allows us to set principled defaults rather than relying entirely on hyperparameter sweeps.
+스케일링 법칙은 모델을 키우거나 학습 데이터를 늘리는 등 학습 규모를 확대할 때 모델 성능이 어떻게 달라지는지 경험적 관계로 나타냅니다(자세한 역사는 이 장 마지막 절을 참고하세요). 최근 [DeepSeek LLM](https://arxiv.org/abs/2401.02954)과 [Qwen2.5](https://arxiv.org/abs/2412.15115) 연구에서 보였듯이, 스케일링 법칙은 학습 규모를 키울 때 학습률과 배치 크기 같은 주요 하이퍼파라미터를 어떻게 조정해야 하는지 예측하는 데도 도움이 됩니다. 덕분에 하이퍼파라미터 탐색에 전적으로 의존하지 않고 근거 있는 기본값을 정할 수 있습니다.
 
-To apply scaling laws in this context, we need a way to quantify training scale. The standard metric is the compute budget, denoted  $C$ , which can be approximated as  $C\approx 6×N×D$ , where  $N$  is the number of model parameters (e.g., 1B = 1e9) and  $D$  is the number of training tokens. This is often measured in FLOPs, a hardware-agnostic way of quantifying how much actual computation is being done. If FLOPs feel too abstract, just think of it this way: Training a 1B-parameter model on 100B tokens consumes about 2× fewer FLOPs than training a 2B-parameter model on 100B tokens or a 1B-parameter model on 200B tokens.
+여기에 스케일링 법칙을 적용하려면 학습 규모를 정량화할 방법이 필요합니다. 표준 지표는 $C$로 나타내는 연산 예산입니다. $C\approx 6×N×D$로 근사할 수 있으며, $N$은 모델 파라미터 수(예를 들어 1B = 1e9), $D$는 학습 토큰 수입니다. 단위로는 흔히 실제 수행하는 연산량을 하드웨어와 무관하게 나타내는 FLOPs를 씁니다. FLOPs가 너무 추상적으로 느껴진다면 이렇게 생각해 보세요. 1B 파라미터 모델을 100B 토큰으로 학습할 때 드는 FLOPs는 2B 파라미터 모델을 100B 토큰으로 학습하거나 1B 파라미터 모델을 200B 토큰으로 학습할 때의 약 절반입니다.
 
-The constant 6 comes from empirical estimates of how many floating-point operations are required to train a transformer: roughly 6 FLOPs per parameter per token.
+상수 6은 트랜스포머 학습에 필요한 부동소수점 연산 횟수를 경험적으로 추정한 값입니다. 토큰 하나를 학습하는 데 파라미터 하나당 약 6 FLOPs가 듭니다.
 
 <Sidenote>
 
-If you want a more precise measure taking into account MoE layers and hybrid layers, check out the [ `num_floating_point_operations` ](https://github.com/NVIDIA/Megatron-LM/blob/f34fa11af6f5dc65f5342f2a785c3227446cebfd/megatron/training/training.py#L158) function in Megatron-LM.
+MoE 층과 하이브리드 층까지 고려해 더 정확하게 측정하려면 Megatron-LM의 [ `num_floating_point_operations` ](https://github.com/NVIDIA/Megatron-LM/blob/f34fa11af6f5dc65f5342f2a785c3227446cebfd/megatron/training/training.py#L158) 함수를 살펴보세요.
 </Sidenote>
 
-Now, how does this relate to learning rate? We can derive scaling laws that predict optimal learning rates and batch sizes as functions of total compute budget ( $C$ ). They help answer questions like:
+그러면 학습률과는 어떤 관계가 있을까요? 총 연산 예산($C$)의 함수로 최적 학습률과 배치 크기를 예측하는 스케일링 법칙을 구할 수 있습니다. 이 법칙은 다음과 같은 질문에 답하는 데 도움이 됩니다.
 
-- How should the learning rate change as I scale from 1B to 7B parameters?
-- If I double my training data, should I adjust the learning rate?
+- 모델을 1B에서 7B 파라미터로 키우면 학습률을 어떻게 바꿔야 할까요?
+- 학습 데이터를 두 배로 늘리면 학습률도 조정해야 할까요?
 
-Let's see how this works by walking through the approach DeepSeek LLM used. First we choose our learning rate schedule, ideally WSD for its flexibility. Then we train models across a range of compute budgets (e.g., 1e17, 5e17, 1e18, 5e18, 1e19, 2e19 FLOPs) with different combinations of batch sizes and learning rates. In simpler terms: We train different model sizes for different numbers of tokens, testing different hyperparameter settings. This is where the WSD schedule shines, as we can extend the same training run to different token counts without restarting. 
+DeepSeek LLM이 사용한 방법을 따라가 봅시다. 먼저 학습률 스케줄을 고릅니다. 유연성을 고려하면 WSD가 이상적입니다. 그런 다음 여러 연산 예산(예를 들어 1e17, 5e17, 1e18, 5e18, 1e19, 2e19 FLOPs)에서 배치 크기와 학습률을 다양하게 조합해 모델을 학습합니다. 쉽게 말해 크기가 다른 모델들을 각기 다른 수의 토큰으로 학습하면서 여러 하이퍼파라미터 설정을 시험하는 겁니다. 이때 WSD의 장점이 빛을 발합니다. 학습을 다시 시작할 필요 없이 같은 학습을 연장해 여러 토큰 수에서 실험할 수 있기 때문입니다.
 
-For each setup, we perform sweeps over learning rate and batch size and identify the configurations that result in near-optimal performance, typically defined as being within a small margin (e.g., 0.25%) of the best validation loss (computed on an independent validation set, with a similar distribution to the training set). Each near-optimal configuration gives us a data point—a tuple of (compute budget  $C$ , optimal learning rate  $η$ ) or ( $C$ , optimal batch size  $B$ ). When plotted on a log–log scale, these relationships typically follow power law behavior, appearing as approximately straight lines (as shown in the figure below). By fitting these data points, we can extract scaling laws that describe how optimal hyperparameters evolve with compute.
+각 환경에서 학습률과 배치 크기를 바꿔 가며 최적에 가까운 성능을 내는 설정을 찾습니다. 보통 학습 세트와 분포가 비슷한 독립 검증 세트에서 손실을 계산해 가장 낮은 손실과의 차이가 작은 범위(예를 들어 0.25%) 안에 들면 최적에 가깝다고 봅니다. 이런 설정마다 (연산 예산 $C$, 최적 학습률 $η$) 또는 ($C$, 최적 배치 크기 $B$)라는 데이터 점 하나를 얻습니다. 대개 이 관계는 거듭제곱 법칙을 따르므로 두 축을 모두 로그 눈금으로 그리면 아래 그림처럼 거의 직선으로 나타납니다. 이 점들에 곡선을 맞추면 연산량에 따라 최적 하이퍼파라미터가 어떻게 변하는지 나타내는 스케일링 법칙을 구할 수 있습니다.
 
-An important finding from this process is that for a fixed model size and compute budget, performance remains stable across a wide range of hyperparameters. This means there's a broad sweet spot rather than a narrow optimum. We don't need to find the perfect value, just a value that's close enough, which makes the whole process much more practical.
+이 과정에서 얻은 중요한 발견이 있습니다. 모델 크기와 연산 예산이 정해져 있을 때 하이퍼파라미터를 꽤 넓은 범위에서 바꿔도 성능이 안정적이라는 점입니다. 최적값의 범위가 좁지 않고 좋은 성능을 내는 구간이 넓다는 뜻입니다. 완벽한 값을 찾을 필요 없이 충분히 가까운 값만 찾으면 되니 실제로 적용하기가 한결 수월합니다.
 
-Here you can see the results of the scaling laws DeepSeek LLM derived, where each dot represents a near-optimal setting:
+아래는 DeepSeek LLM이 도출한 스케일링 법칙을 그린 결과입니다. 점 하나가 최적에 가까운 설정 하나를 나타냅니다.
 
 
 
-<Image src={image_2471384e_bcac_8059_84a4_d4ce5ae3847c} alt="Image" />
+<Image src={image_2471384e_bcac_8059_84a4_d4ce5ae3847c} alt="그림" />
 
-The core intuition behind these results is that as training becomes larger and longer, we want  *more stable updates*  (smaller learning rates) and  *more efficient gradient estimation*  (larger batch sizes).
+이 결과는 직관적으로 이해할 수 있습니다. 학습 규모가 커지고 기간이 길어질수록 학습률을 낮춰 *더 안정적으로 업데이트*하고, 배치 크기를 키워 *그래디언트를 더 효율적으로 추정*하려는 겁니다.
 
-These scaling laws give us starting points for the learning rate and batch size. But the objective is not "optimal samples per gradient" but "lower loss reachable within our time and number of GPUs constraints" while still extracting the full signal from every token. 
+이 스케일링 법칙은 학습률과 배치 크기의 출발점을 알려 줍니다. 하지만 우리의 목표는 ‘그래디언트 하나당 최적의 샘플 수’를 찾는 데 있지 않습니다. 각 토큰에서 학습 신호를 최대한 끌어내면서 ‘주어진 시간과 GPU 수로 도달할 수 있는 가장 낮은 손실’을 얻는 데 있습니다.
 
-In practice, you may be able to increase the batch size beyond the predicted optimal batch size to significantly improve throughput without meaningfully hurting data efficiency, up to the critical batch size we discussed earlier.
+실제로는 예측한 최적 배치 크기를 넘어서 앞서 살펴본 임계 배치 크기까지 배치를 늘려도, 데이터 효율을 눈에 띄게 떨어뜨리지 않으면서 처리량을 크게 높일 수 있습니다.
 
 
 
 #### SmolLM3
 
-So what did we end up using for SmolLM3? During ablations, we compared AdamW, AdEMAMix, and Muon on a 1B model trained on 100B tokens. Muon was able to outperform AdamW when properly tuned but was sensitive to learning rate and prone to divergence. AdeMAMix achieved similar loss to Muon but was less sensitive. AdamW was the most stable but reached a higher final loss than the tuned alternatives.
+그래서 SmolLM3에는 결국 어떤 설정을 썼을까요? 어블레이션에서는 1B 모델을 100B 토큰으로 학습하며 AdamW, AdEMAMix, Muon을 비교했습니다. Muon은 잘 조정하면 AdamW를 앞섰지만 학습률에 민감하고 발산하기 쉬웠습니다. AdEMAMix는 Muon과 비슷한 손실에 도달하면서도 학습률에는 덜 민감했습니다. AdamW는 가장 안정적이었지만 최종 손실은 잘 조정한 나머지 두 옵티마이저보다 높았습니다.
 
-However, when we scaled up to 3B, we encountered more frequent divergence with Muon and AdeMAMix. This may have been due to a parallelism bug we discovered after finishing the ablations (see ["The Training Marathon"](@the-training-marathon)), though we haven't confirmed this. We decided to use AdamW (beta1: 0.9, beta2: 0.95) with weight decay 0.1 and gradient clipping 1. Ultimately, a very vanilla setting.
+그런데 모델을 3B로 키우자 Muon과 AdEMAMix에서 발산이 더 잦아졌습니다. 어블레이션을 끝낸 뒤 발견한 병렬화 버그가 원인일 수도 있지만([‘학습 마라톤’](@the-training-marathon) 참고), 확인하지는 못했습니다. 우리는 AdamW(beta1 = 0.9, beta2 = 0.95)에 가중치 감쇠 0.1과 그래디언트 클리핑 1을 적용하기로 했습니다. 결국 아주 평범한 설정으로 돌아왔습니다.
 
-For the learning rate schedule, we chose WSD. We had used it successfully in SmolLM2, and it proved to be one of our best decisions for ease of use and flexibility regarding total training duration plus the ability to run mid-training decay experiments. We ran learning rate sweeps and settled on 2e-4. For the global batch size, we tested values from 2M to 4M tokens but found minimal impact on the loss or downstream performance, so we chose 2.36M tokens, the size that gave us the best throughput.
+학습률 스케줄로는 WSD를 선택했습니다. SmolLM2에서도 효과를 봤는데, 사용하기 쉽고 전체 학습 기간을 유연하게 정할 수 있으며 학습 도중에 감쇠 실험도 할 수 있어 특히 잘한 선택 중 하나였습니다. 여러 학습률을 시험한 끝에 2e-4로 정했습니다. 전역 배치 크기는 2M에서 4M 토큰까지 시험했지만 손실이나 다운스트림 성능 차이가 미미해 처리량이 가장 높았던 2.36M 토큰을 골랐습니다.
 
-#### Rules of Engagement
+#### 실험을 이끄는 원칙
 
 <Quote>
 
-<b>TL;DR:</b> Balance exploration and execution. Done is better than perfect.
+<b>요약:</b> 탐색과 실행 사이에서 균형을 잡으세요. 완벽을 기하기보다 끝까지 해내는 편이 낫습니다.
 </Quote>
 
-We've talked a lot about the "what" (optimizer, learning rate, batch size), but just as important is the "how." How do we decide what's worth experimenting with? How do we structure our time? When do we stop exploring and just train? 
+지금까지 옵티마이저, 학습률, 배치 크기 등 ‘무엇을’ 정할지 많이 이야기했습니다. 그만큼 중요한 것이 ‘어떻게’ 정할지입니다. 어떤 실험에 시간을 들일 만한지 어떻게 판단할까요? 시간은 어떻게 나눠 쓸까요? 언제 탐색을 마치고 본 학습을 시작해야 할까요?
 
- **Allocate your time wisely between exploration and execution.**  Spending weeks perfecting a minor improvement from a new method is less valuable than investing that same compute in better data curation or more thorough architecture ablations. From our experience, though it might disappoint architecture enthusiasts, the biggest performance gains usually come from data curation.
+ **탐색과 실행에 시간을 현명하게 배분하세요.** 새 기법으로 성능을 조금 더 끌어올리려고 몇 주를 들이는 것보다, 같은 연산 자원을 더 나은 데이터 큐레이션이나 더 꼼꼼한 아키텍처 어블레이션에 투자하는 편이 가치가 큽니다. 아키텍처를 좋아하는 분들에게는 아쉬운 소식이겠지만, 우리 경험상 가장 큰 성능 향상은 대개 데이터 큐레이션에서 나옵니다.
 
- **When in doubt, choose flexibility and stability over peak performance.**  If two methods perform equally well, pick the one that offers more flexibility or that has better implementation maturity and stability. A learning rate schedule like WSD that lets you extend training or run mid-training experiments is more valuable than a rigid schedule that might converge slightly better.
+ **판단이 서지 않을 때는 최고 성능보다 유연성과 안정성을 우선하세요.** 두 방법의 성능이 비슷하면 더 유연하게 쓸 수 있거나 구현이 더 성숙하고 안정적인 쪽을 고르세요. WSD처럼 학습을 연장하거나 도중에 실험할 수 있는 학습률 스케줄이, 조금 더 잘 수렴할지는 몰라도 변경하기 어려운 스케줄보다 더 유용합니다.
 
- **Know when to stop optimizing and start training.**  There's always one more hyperparameter to tune or one more optimizer to try. Set a deadline for exploration and stick to it—the model you actually finish training will always beat the perfect model you never start training.
+ **언제 최적화를 멈추고 학습을 시작할지 정하세요.** 조정해 볼 하이퍼파라미터도, 시험해 볼 옵티마이저도 늘 하나씩 더 있기 마련입니다. 탐색을 마칠 기한을 정하고 지키세요. 실제로 학습을 끝낸 모델이 학습을 시작조차 못 한 완벽한 모델을 언제나 이깁니다.
 
-<Reference caption="One more ablation won't hurt! (Spoiler: It did.) Credit to <a href='[https://x.com/sea_snell/status/1905163154596012238](https://x.com/sea_snell/status/1905163154596012238)'>
+<Reference caption="어블레이션 한 번만 더 한다고 무슨 일이 나겠어! (결말을 살짝 밝히자면, 일이 났습니다.) 출처: <a href='[https://x.com/sea_snell/status/1905163154596012238](https://x.com/sea_snell/status/1905163154596012238)'>
 
 sea_snell</a>.">
 
-<Image src={Capture_decran_2025_10_27_a_22_10_05_2991384e_bcac_802a_a6e6_dab0f9f410ec} alt="Image" />
+<Image src={Capture_decran_2025_10_27_a_22_10_05_2991384e_bcac_802a_a6e6_dab0f9f410ec} alt="그림" />
 </Reference>
 
-Perfect is the enemy of good, especially when we're working with finite compute budgets and deadlines.
+연산 예산도 시간도 한정돼 있을 때는 특히, 완벽을 좇다가 좋은 결과마저 놓치기 쉽습니다.
 
-### Scaling Laws: How Many Parameters, How Much Data?
+### 스케일링 법칙 — 파라미터와 데이터는 얼마나 필요할까요?
 
-In the early days of deep learning, before language models (and the clusters they were trained on) were "large," training runs were often not heavily constrained by compute. When training a model, you'd just pick the largest model and batch size that fit on your hardware and train until the model started overfitting or you ran out of data. However, even in those early days there was a sense that scale was helpful—for example, [Hestness et al.](https://arxiv.org/abs/1712.00409) provided a comprehensive set of results in 2017 showing that training larger models for longer produced predictable gains. 
+딥러닝 초창기, 언어 모델도 학습용 클러스터도 아직 ‘대규모’라는 말이 어울리지 않던 시절에는 연산 자원이 학습에 큰 제약이 되지 않는 경우가 많았습니다. 하드웨어 메모리가 허용하는 한도에서 가장 큰 모델과 배치 크기를 고른 뒤 모델이 과적합되기 시작하거나 데이터가 바닥날 때까지 학습하면 됐습니다. 그때도 규모를 키우면 도움이 된다는 인식은 있었습니다. 예를 들어 2017년에 [Hestness 등](https://arxiv.org/abs/1712.00409)은 더 큰 모델을 더 오래 학습하면 성능 향상 폭을 예측할 수 있다는 점을 폭넓은 실험 결과로 보여 줬습니다.
 
-In the era of large language models, we are  *always*  compute-constrained. Why? The early notions of scalability were formalized by Kaplan et al.'s work in ["Scaling Laws for Neural Language Models,"](https://arxiv.org/abs/2001.08361) where it was shown that language model performance is remarkably predictable across many orders of magnitude of scale. This set off an explosion in the sizes and training durations of language models, because it provided a way to  *accurately predict* how much increasing scale would improve performance. Consequently, the race to build better language models became a race to train larger models on larger amounts of data with ever-growing compute budgets, and the development of language models quickly became compute-constrained.
+대규모 언어 모델 시대에는 *언제나* 연산 자원이 제약입니다. 어쩌다 그렇게 됐을까요? Kaplan 등은 [“Scaling Laws for Neural Language Models”](https://arxiv.org/abs/2001.08361)에서 규모 확장에 관한 초기의 생각을 법칙으로 정리하고, 규모가 몇 자릿수나 달라져도 언어 모델 성능을 놀라울 만큼 잘 예측할 수 있음을 보였습니다. 규모를 키우면 성능이 얼마나 좋아질지 *정확히 예측*할 길이 열리면서 언어 모델의 크기와 학습 기간이 폭발적으로 늘었습니다. 결국 더 좋은 언어 모델을 만들려는 경쟁은 갈수록 더 많은 연산 자원을 들여 더 큰 모델을 더 많은 데이터로 학습하는 경쟁이 됐고, 연산 자원은 금세 언어 모델 개발의 제약이 됐습니다.
 
-When faced with compute constraints, the most important question is whether to train a larger model or to train on more data. Surprisingly, Kaplan et al.'s scaling laws suggested that it was advantageous to allocate much more compute to model scale than previous best practices—motivating, for example, training the gargantuan (175B parameters) GPT-3 model on a relatively modest token budget (300B tokens). On reexamination, [Hoffman et al. (2022)](https://arxiv.org/abs/2203.15556) found a methodological issue with Kaplan et al.'s approach, ultimately re-deriving scaling laws that suggested allocating much more compute to training duration—which indicated, for example, that compute-optimal training of the 175B-parameter GPT-3 should have consumed 3.7T tokens! Hoffman et al.'s revised scaling laws became known as the Chinchilla laws, named after the Chinchilla model that motivated the update.
+연산 자원이 제한적일 때 가장 중요한 질문은 모델을 키울지, 학습 데이터를 늘릴지입니다. 놀랍게도 Kaplan 등의 스케일링 법칙에 따르면 기존 관행보다 모델 크기에 훨씬 많은 연산량을 배분하는 쪽이 유리했습니다. 가령 거대한 GPT-3 모델(175B 파라미터)을 상대적으로 적은 토큰(300B 토큰)으로 학습한 배경에는 이런 결과가 있었습니다. [Hoffman 등(2022)](https://arxiv.org/abs/2203.15556)은 Kaplan 등의 접근법을 재검토해 방법론상의 문제를 발견했고, 학습 기간을 늘리는 데 훨씬 많은 연산량을 배분해야 한다는 스케일링 법칙을 새로 도출했습니다. 이 법칙에 따르면 175B 파라미터의 GPT-3를 연산 예산에 맞춰 최적으로 학습하려면 무려 3.7T 토큰을 써야 했습니다! Hoffman 등이 수정한 법칙에는 그 계기가 된 모델의 이름을 따서 Chinchilla 법칙이라는 이름이 붙었습니다.
 
-This development shifted the field from "make models bigger" to "train them longer and better." However, most modern training runs still don't strictly follow the Chinchilla laws, because they have a shortcoming: They aim to predict the model size and training duration that achieve the best performance given a certain compute budget, but they fail to account for the fact that larger models are more expensive  *after*  training. Put another way, we might actually prefer to use a given compute budget to train a smaller model for longer, even if this isn't "compute-optimal," because it will make inference costs cheaper ([Sardana et al., 2025](https://arxiv.org/abs/2401.00448); [de Vries, 2023](https://www.harmdevries.com/post/model-size-vs-compute-overhead/)). This could be the case if we expect that a model will be see a lot of inference usage (for example, because it's being released openly 🤗). Recently, this practice of "overtraining" models beyond the training duration suggested by scaling laws has become standard practice, and it's the approach we took when developing SmolLM3.
+이 연구를 계기로 분야의 관심은 ‘모델을 더 키우자’에서 ‘더 오래, 더 잘 학습하자’로 옮겨갔습니다. 하지만 요즘도 대다수 학습에서는 Chinchilla 법칙을 엄격히 따르지는 않습니다. 주어진 연산 예산에서 최고 성능을 낼 모델 크기와 학습 기간을 예측하려는 법칙이라, 모델이 클수록 *학습이 끝난 뒤에도* 비용이 더 든다는 점을 고려하지 못하기 때문입니다. 같은 연산 예산이라도 ‘연산량 대비 최적’에서 벗어나 더 작은 모델을 더 오래 학습하는 편을 선호할 수 있습니다. 그러면 추론 비용이 줄어듭니다([Sardana 등, 2025](https://arxiv.org/abs/2401.00448), [de Vries, 2023](https://www.harmdevries.com/post/model-size-vs-compute-overhead/)). 예를 들어 모델을 공개할 예정이라 🤗 추론에 많이 쓰일 것으로 예상한다면 이런 선택을 할 만합니다. 최근에는 스케일링 법칙이 제시한 기간을 넘겨 모델을 학습하는 ‘초과 학습(overtraining)’이 일반적인 관행이 됐고, 우리도 SmolLM3를 개발할 때 이 방법을 썼습니다.
 
-While scaling laws provide a suggestion for the model size and training duration given a particular compute budget, choosing to overtrain means you have to decide on these factors yourself. For SmolLM3, we started by picking a target model size of 3B parameters. Based on recent models of a similar scale, like Qwen3-4B, Gemma 3 4B, and Llama 3.2 3B, we considered 3B to be large enough for the model to have meaningful capabilities (such as reasoning and tool calling), but small enough to enable super-fast inference and efficient local usage. To pick a training duration, we first noted that recent models have been  *extremely*  overtrained—for example, the aforementioned Qwen3 series claims to have been trained for 36T tokens! As a result, training duration is often dictated by the amount of compute available. We secured 384 H100s for roughly a month, which provided a budget for training on 11T tokens (assuming a model FLOPs utilization of ~30%).
+스케일링 법칙은 주어진 연산 예산에 맞는 모델 크기와 학습 기간을 제시하지만, 초과 학습을 택하면 두 가지를 직접 정해야 합니다. SmolLM3에서는 먼저 목표 모델 크기를 3B 파라미터로 잡았습니다. Qwen3-4B, Gemma 3 4B, Llama 3.2 3B 등 최근의 비슷한 규모 모델로 미루어, 3B면 추론 능력과 도구 호출 같은 유의미한 역량을 갖출 만큼 크면서도 아주 빠르게 추론하고 로컬 환경에서 효율적으로 쓸 만큼 작다고 판단했습니다. 학습 기간을 정할 때 먼저 눈에 들어온 점은 최근 모델의 초과 학습 규모가 *엄청나다*는 사실이었습니다. 가령 앞서 언급한 Qwen3 시리즈는 무려 36T 토큰으로 학습했다고 합니다! 그러다 보니 학습 기간은 확보할 수 있는 연산 자원으로 결정되는 경우가 많습니다. 우리는 H100 384장을 약 한 달간 확보했고, 모델 FLOPs 활용률이 약 30%라고 가정하면 11T 토큰을 학습할 수 있는 예산이었습니다.
 
-<Note title="The value of scaling laws" variant="info">
+<Note title="스케일링 법칙의 가치" variant="info">
 
-Despite these deviations, scaling laws remain practically valuable.
-They provide baselines for experimental design,
-people often use Chinchilla-optimal setups to get signal on ablations,
-and they help predict whether a given model size can reach a target performance.
-As Harm de Vries notes in <a href="[https://www.harmdevries.com/post/model-size-vs-compute-overhead/](https://www.harmdevries.com/post/model-size-vs-compute-overhead/)" target="_blank">"Go Smol or Go Home,"</a>
-by scaling down model size you can hit a critical model size: the minimal capacity required to reach a given loss,
-below which you start getting diminishing returns.
+실제 학습이 법칙에서 벗어나더라도 스케일링 법칙은 여전히 실용적인 가치가 있습니다.
+실험 설계의 베이스라인을 제시해 주고,
+어블레이션에서 효과를 가늠하려고 Chinchilla 최적 설정을 쓰는 경우도 많습니다.
+주어진 크기의 모델이 목표 성능에 도달할 수 있는지 예측하는 데도 도움이 됩니다.
+Harm de Vries가 <a href="[https://www.harmdevries.com/post/model-size-vs-compute-overhead/](https://www.harmdevries.com/post/model-size-vs-compute-overhead/)" target="_blank">“Go Smol or Go Home”</a>에서 지적했듯이,
+모델을 줄이다 보면 특정 손실에 도달하는 데 필요한 최소 용량, 즉 임계 모델 크기에 이릅니다.
+그보다 더 줄이면 얻는 이득이 점차 작아집니다.
 </Note>
 
-Now that we're settled on our model architecture, training setup, model size, and training duration, we need to prepare two critical components: the data mixture that will teach our model, and the infrastructure that will train it reliably. With SmolLM3's architecture set at 3B parameters, we needed to curate a data mixture that would deliver strong multilingual, math, and code performance and set up infrastructure robust enough for 11T tokens of training data. Getting these fundamentals right is essential—even the best architectural choices won't save us from poor data curation or unstable training systems.
+이제 아키텍처와 학습 설정, 모델 크기와 학습 기간을 정했으니 두 가지 핵심 요소를 준비해야 합니다. 모델이 배울 데이터 혼합과 모델을 안정적으로 학습시킬 인프라입니다. SmolLM3의 아키텍처를 3B 파라미터로 확정한 우리는 다국어와 수학, 코드에서 우수한 성능을 낼 수 있도록 데이터를 선별하고 혼합해야 했고, 11T 토큰의 학습 데이터를 감당할 만큼 견고한 인프라도 구축해야 했습니다. 이 기초를 잘 다져야 합니다. 아무리 좋은 아키텍처를 골라도 부실한 데이터 큐레이션이나 불안정한 학습 시스템까지 만회해 주지는 못합니다.
 
 ## The Art of Data Curation
 
