@@ -146,13 +146,13 @@
             // Layout: top-down with very generous vertical spacing between layers
             const nodes = [
                 { id: 'A', label: '직접 모델을 학습해야 할까요?', type: 'question', x: 400, y: 100 },
-                { id: 'B', label: '기존 모델로 목적을 달성할 수 있나요?', type: 'question', x: 400, y: 240 },
-                { id: 'C', label: '기존 모델이 프롬프팅만으로 잘 작동합니다', type: 'decision', x: 200, y: 400 },
+                { id: 'B', label: '기존 모델로 필요한 작업을 할 수 있나요?', type: 'question', x: 400, y: 240 },
+                { id: 'C', label: '프롬프팅만으로 충분합니다', type: 'decision', x: 200, y: 400 },
                 { id: 'D', label: '프롬프팅만으로는 부족합니다', type: 'decision', x: 600, y: 400 },
                 { id: 'E', label: '❌\n학습하지 말고 기존 모델을 쓰세요', type: 'success', x: 200, y: 560 },
-                { id: 'F', label: '미세 조정으로 문제를 해결할 수 있나요?', type: 'question', x: 600, y: 600 },
-                { id: 'G', label: '미세 조정으로 해결됩니다(사후 학습/지속 사전 학습)', type: 'decision', x: 450, y: 760 },
-                { id: 'H', label: '미세 조정으로 해결할 수 없습니다', type: 'decision', x: 750, y: 760 },
+                { id: 'F', label: '파인튜닝으로 해결할 수 있나요?', type: 'question', x: 600, y: 600 },
+                { id: 'G', label: '사후 학습을 하거나 사전 학습을 이어 가면 해결됩니다', type: 'decision', x: 450, y: 760 },
+                { id: 'H', label: '파인튜닝으로도 해결할 수 없습니다', type: 'decision', x: 750, y: 760 },
                 { id: 'I', label: '❌\n처음부터 학습하지 마세요', type: 'success', x: 450, y: 920 },
                 { id: 'J', label: '다음 목적 중 하나에 맞춰 모델을 학습하세요', type: 'category', x: 750, y: 960 },
                 { id: 'K', label: '🔬\n연구', type: 'category', x: 600, y: 1120 },
