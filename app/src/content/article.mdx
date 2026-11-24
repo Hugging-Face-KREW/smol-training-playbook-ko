@@ -1399,46 +1399,46 @@ At a broader scale, architectural layout choices also play a role in shaping mod
 
 We have now covered the most important aspects of the dense transformer architecture worth optimizing for your training run. However, recently other architectural interventions that concern the model as a whole have emerged, including MoE and hybrid models. Let's take a look what they have to offer, starting with MoEs.
 
-#### Going Sparse: MoE 
+#### 희소 구조로 가기: MoE
 
-The intuition of mixture of experts models is that we don't need the full model for every token prediction, similarly to how our brain activates different areas depending on the task at hand (e.g., the visual or motor cortex). For an LLM, this could mean that the parts that learned about coding syntax don't need to be used when the model performs a translation task. If we can do this well, we can save a lot of compute as it means we only need to run parts of the full model at inference time.
+전문가 혼합(MoE) 모델의 직관은 토큰을 하나 예측할 때마다 모델 전체가 필요하지는 않다는 것입니다. 우리 뇌가 지금 하는 일에 따라 시각 피질이나 운동 피질처럼 서로 다른 영역을 활성화하는 것과 비슷합니다. LLM으로 치면 코딩 문법을 학습한 부분은 모델이 번역 작업을 할 때 쓰이지 않아도 된다는 뜻일 수 있습니다. 이를 잘 해낸다면 추론 시점에 전체 모델 중 일부만 실행하면 되므로 연산량을 크게 아낄 수 있습니다.
 
-On a technical level, MoEs have a simple goal: Grow total parameters without increasing the number of "active" parameters for each token. Somewhat simplified, the total parameters impact the total learning capacity of the model, while the active parameters determine the training cost and inference speed. That's why you see many frontier systems (e.g., DeepSeek-V3, Kimi K2, and closed source models like Gemini, Grok, etc.) using MoE architectures these days. The following plot from the Ling 1.5 paper [@ling15] compares the scaling laws of MoE and dense models.
+기술적으로 보면 MoE의 목표는 단순합니다. 토큰마다 쓰는 "활성" 파라미터 수는 늘리지 않으면서 전체 파라미터 수를 키우는 것입니다. 다소 단순화하면 전체 파라미터는 모델의 전체 학습 용량에 영향을 주고, 활성 파라미터는 학습 비용과 추론 속도를 결정합니다. 그래서 요즘 많은 프런티어 시스템(DeepSeek-V3, Kimi K2, 그리고 Gemini·Grok 같은 비공개 모델 등)이 MoE 아키텍처를 사용합니다. 아래 Ling 1.5 논문 [@ling15]의 그래프는 MoE 모델과 밀집(dense) 모델의 스케일링 법칙을 비교합니다.
 
-<Image src={image_2931384e_bcac_80c4_ab02_f22c53e6fdee} alt="Image" />
+<Image src={image_2931384e_bcac_80c4_ab02_f22c53e6fdee} alt="이미지" />
 
- If this is your first time encountering MoEs, don't worry, the mechanics are not complicated. Let's start with the standard dense architecture and see what changes are necessary for the MoE (figure by [Sebastian Raschka](https://github.com/rasbt/LLMs-from-scratch/tree/main/ch04/07_moe)):
+ MoE를 처음 접한다면 걱정하지 마세요. 동작 원리는 복잡하지 않습니다. 표준 밀집 아키텍처에서 출발해 MoE로 바꾸려면 무엇이 달라져야 하는지 살펴보겠습니다([Sebastian Raschka](https://github.com/rasbt/LLMs-from-scratch/tree/main/ch04/07_moe)의 그림).
 
 <Wide>
 
-<Image src={image_2931384e_bcac_8062_bc11_d1ee3706d996} alt="Image" />
+<Image src={image_2931384e_bcac_8062_bc11_d1ee3706d996} alt="이미지" />
 </Wide>
 
-With MoEs, we replace the single multilayer perceptron (MLP) with multiple MLPs ("experts") and add a learnable router before the MLPs. For each token, the router selects a small subset of experts to execute. This is where the distinction between total parameters and active parameters comes from: The model has many experts, but any given token only uses a few.
+MoE에서는 하나의 다층 퍼셉트론(MLP)을 여러 개의 MLP("전문가")로 바꾸고, MLP 앞에 학습 가능한 라우터를 추가합니다. 라우터는 토큰마다 실행할 전문가를 소수만 고릅니다. 전체 파라미터와 활성 파라미터의 구분은 여기서 나옵니다. 모델에는 전문가가 많지만, 각 토큰은 그중 몇 개만 사용합니다.
 
-Designing an MoE layer raises a few core questions:
+MoE 레이어를 설계하려면 몇 가지 핵심 질문에 답해야 합니다.
 
--  **Expert shape & sparsity:**  Should you use many small experts or fewer large ones? How many experts should be active per token, and how many do you need in total (i.e., the sparsity or "top- *k* ")? Should some experts be universal and thus always active?
--  **Utilization & specialization:**  How do you select the routed experts and keep them well used (i.e., avoid idle capacity) while still encouraging them to specialize? In practice, this is a load-balancing problem that has a significant impact on training and inference efficiency.
+-  **전문가 형태와 희소성:**  작은 전문가를 많이 둘까요, 큰 전문가를 적게 둘까요? 토큰마다 전문가를 몇 개 활성화하고, 전체 전문가는 몇 개가 필요할까요(즉, 희소성 또는 "top- *k* ")? 일부 전문가를 범용으로 두어 항상 활성화해야 할까요?
+-  **활용도와 전문화:**  라우팅할 전문가를 어떻게 고르고, 각 전문가를 고르게 사용하면서(즉, 노는 용량을 만들지 않으면서) 전문화도 유도할 수 있을까요? 실제로는 학습과 추론 효율에 큰 영향을 주는 부하 분산 문제입니다.
 
-Here, we focus on one objective: Given a fixed compute budget, how do we choose an MoE configuration that minimizes loss? That's a different question from pure system efficiency (throughput/latency), and we'll come back to it later. 
+여기서는 한 가지 목표에 집중합니다. 연산 예산이 고정되어 있을 때 손실을 최소화하는 MoE 구성은 어떻게 고를까요? 순수한 시스템 효율(처리량/지연 시간)과는 다른 질문이며, 시스템 효율은 나중에 다시 다룹니다.
 
-Much of this section follows the analysis in Ant Group's MoE scaling laws paper [@antgroup]. We'll use their notion of  *efficiency leverage (EL)* . Simply put, EL measures how much dense compute you'd need to match the loss achieved by an MoE design where the unit of measurement is floating-point operations (FLOPs). A higher EL means the MoE configuration is delivering more loss improvement per unit of compute compared to dense training.
+이 절의 상당 부분은 Ant Group의 MoE 스케일링 법칙 논문 [@antgroup]의 분석을 따릅니다. 이 논문의  *효율 레버리지(efficiency leverage, EL)*  개념을 사용하겠습니다. 간단히 말해 EL은 어떤 MoE 설계가 달성한 손실에 도달하려면 밀집 모델에 연산량이 얼마나 필요한지를 측정하며, 측정 단위는 부동소수점 연산 횟수(FLOPs)입니다. EL이 높을수록 해당 MoE 구성이 밀집 모델 학습보다 연산량 단위당 손실을 더 많이 개선한다는 뜻입니다.
 
 <HtmlEmbed src="embeds/efficiency-leverage.html"/>
 
 
 
-Let's take a closer look at how we can set up the sparsity of the MoE to improve the efficiency leverage.
+효율 레버리지를 높이려면 MoE의 희소성을 어떻게 설정해야 하는지 자세히 살펴보겠습니다.
 
- **Sparsity/Activation Ratio** 
+ **희소성/활성화 비율**
 
 <Quote>
 
-TL;DR: More sparsity → Better FLOPs efficiency → Diminishing returns at very high sparsity → Sweet spot depends on your compute budget.
+TL;DR: 희소성 증가 → FLOPs 효율 향상 → 희소성이 매우 높으면 수확 체감 → 최적점은 연산 예산에 따라 달라짐.
 </Quote>
 
-Our goal in this section is to find out which MoE setting is best. Asymptotically, it's easy to see that the two extremes are not ideal settings. On the one hand, activating all experts all the time brings us back to the dense setting where all parameters are used all the time. On the other hand, if the number of active parameters is very low (as an extreme, think of just one parameter being active), clearly it won't be enough to solve a task even in a narrow domain. So, we need to find some middle ground. Before we get deeper into finding the optimal setup, it's useful to define two quantities, the  *activation ratio*  and its inverse, the  *sparsity:* 
+이 절의 목표는 어떤 MoE 설정이 가장 좋은지 알아내는 것입니다. 점근적으로 보면 양 극단이 이상적인 설정이 아니라는 것은 쉽게 알 수 있습니다. 한쪽 극단처럼 모든 전문가를 항상 활성화하면, 모든 파라미터를 항상 사용하는 밀집 설정으로 돌아갑니다. 다른 쪽 극단처럼 활성 파라미터 수가 아주 적으면(극단적으로 파라미터 하나만 활성화된다고 생각해 보세요), 좁은 도메인의 작업조차 해결하기에 분명히 부족합니다. 따라서 그 사이 어딘가를 찾아야 합니다. 최적 설정을 본격적으로 찾기 전에 두 가지 양을 정의해 두면 유용합니다. 바로  *활성화 비율* 과 그 역수인  *희소성* 입니다.
 
 $$
 \text{activation ratio} \;=\; \frac{\#\text{activated experts}}{\#\text{total experts}}
@@ -1448,71 +1448,71 @@ $$
 \text{sparsity} \;=\; \frac{\#\text{total experts}}{\#\text{activated experts}} \;=\; \frac{1}{\text{activation ratio}}
 $$
 
-From a compute perspective, the cost is driven by active parameters only. If you keep the number (and size) of activated experts fixed and increase the total number of experts, your inference/training FLOPs budget stays more or less the same, but you're adding model capacity, so the model should generally be better as long as you train long enough.
+연산 관점에서 비용은 활성 파라미터만으로 정해집니다. 활성화되는 전문가의 수(와 크기)를 고정하고 전체 전문가 수를 늘리면 추론/학습 FLOPs 예산은 거의 그대로이지만 모델 용량은 늘어납니다. 따라서 충분히 오래 학습한다면 모델은 대체로 더 좋아질 것입니다.
 
-There are some interesting empirical takeaways if you survey recent MoE papers: Holding the number and size of active experts fixed, increasing the total number of experts (i.e., lowering activation ratio/increasing sparsity) improves loss, with diminishing returns once sparsity gets very high.
+최근 MoE 논문들을 살펴보면 흥미로운 경험적 결론이 있습니다. 활성 전문가의 수와 크기를 고정한 채 전체 전문가 수를 늘리면(즉, 활성화 비율을 낮추거나 희소성을 높이면) 손실이 개선되지만, 희소성이 매우 높아지면 수확 체감이 나타납니다.
 
-Consider the following figures:
+다음 그림을 보세요.
 
-- The Kimi K2 plot [@kimik2] shows both effects: Higher sparsity improves performance, but gains taper off as sparsity grows.
-- The Ant Group plot [@antgroup] shows the same conclusion, with the additional result that higher-sparsity MoEs benefit more from increasing compute.
+- Kimi K2 그래프 [@kimik2]는 두 효과를 모두 보여 줍니다. 희소성이 높을수록 성능이 좋아지지만, 희소성이 커질수록 개선 폭은 줄어듭니다.
+- Ant Group 그래프 [@antgroup]도 같은 결론을 보여 주며, 희소성이 높은 MoE일수록 연산량을 늘렸을 때 더 큰 이득을 본다는 결과도 함께 보여 줍니다.
 
-<Image src={Capture_decran_2025_10_20_a_13_25_47_2921384e_bcac_8087_83e5_fa7a40c1f342} alt="Image" />
+<Image src={Capture_decran_2025_10_20_a_13_25_47_2921384e_bcac_8087_83e5_fa7a40c1f342} alt="이미지" />
 
 <Wide>
 
-<Image src={Capture_decran_2025_10_20_a_13_26_08_2921384e_bcac_80b5_ac36_fb73d6374208} alt="Image" />
+<Image src={Capture_decran_2025_10_20_a_13_26_08_2921384e_bcac_80b5_ac36_fb73d6374208} alt="이미지" />
 </Wide>
 
-The following table lists the sparsity of some MoE models:
+다음 표는 몇몇 MoE 모델의 희소성을 정리한 것입니다.
 
 <Wide>
 
-| Model | Total Experts | Activated per Token (Incl. Shared) | Sparsity |
+| 모델 | 전체 전문가 수 | 토큰당 활성 전문가 수(공유 전문가 포함) | 희소성 |
 | --- | --- | --- | --- |
 | Mixtral-8×7B | 8 | 2 | 4.0 |
 | Grok-1 | 8 | 2 | 4.0 |
 | Grok-2 | 8 | 2 | 4.0 |
 | OLMoE-1B-7B-0924 | 64 | 8 | 8.0 |
 | gpt-oss 20b | 32 | 4 | 8 |
-| Step-3 | 48 routed + 1 shared = 49 | 3 routed + 1 shared = 4 | 12.25 |
-| GLM-4.5-Air | 128 routed + 1 shared = 129 | 8 routed + 1 shared = 9 | 14.3 |
+| Step-3 | 라우팅 48 + 공유 1 = 49 | 라우팅 3 + 공유 1 = 4 | 12.25 |
+| GLM-4.5-Air | 라우팅 128 + 공유 1 = 129 | 라우팅 8 + 공유 1 = 9 | 14.3 |
 | Qwen3-30B-A3B | 128 | 8 | 16.0 |
 | Qwen3-235B-A22B | 128 | 8 | 16.0 |
-| GLM-4.5 | 160 routed + 1 shared = 161 | 8 routed + 1 shared = 9 | 17.8 |
-| DeepSeek-V2 | 160 routed + 2 shared = 162 | 6 routed + 2 shared = 8 | 20.25 |
-| DeepSeek-V3 | 256 routed + 1 shared = 257 | 8 routed + 1 shared = 9 | 28.6 |
+| GLM-4.5 | 라우팅 160 + 공유 1 = 161 | 라우팅 8 + 공유 1 = 9 | 17.8 |
+| DeepSeek-V2 | 라우팅 160 + 공유 2 = 162 | 라우팅 6 + 공유 2 = 8 | 20.25 |
+| DeepSeek-V3 | 라우팅 256 + 공유 1 = 257 | 라우팅 8 + 공유 1 = 9 | 28.6 |
 | gpt-oss 120b | 128 | 4 | 32 |
-| Kimi K2 | 384 routed + 1 shared = 385 | 8 routed + 1 shared = 9 | 42.8 |
-| Qwen3-Next-80B-A3B-Instruct | 512 routed + 1 shared = 513 | 10 total active + 1 shared = 11 | 46.6 |
+| Kimi K2 | 라우팅 384 + 공유 1 = 385 | 라우팅 8 + 공유 1 = 9 | 42.8 |
+| Qwen3-Next-80B-A3B-Instruct | 라우팅 512 + 공유 1 = 513 | 전체 활성 10 + 공유 1 = 11 | 46.6 |
 </Wide>
 
-The recent trend is clear: MoE models are getting sparser. That said, the optimal sparsity still depends on hardware and end-to-end efficiency. For example, Step-3 targets peak efficiency and intentionally doesn't max out sparsity to fit specific hardware and bandwidth constraints, while gpt-oss-20b has a low sparsity due to on-device memory constraints (the passive expert still takes some memory).
+최근 추세는 분명합니다. MoE 모델은 점점 더 희소해지고 있습니다. 그렇지만 최적의 희소성은 여전히 하드웨어와 엔드투엔드 효율에 따라 달라집니다. 예를 들어 Step-3는 최고 효율을 목표로 하면서도 특정 하드웨어와 대역폭 제약에 맞추려고 일부러 희소성을 최대로 높이지 않습니다. 반면 gpt-oss-20b는 온디바이스 메모리 제약 때문에 희소성이 낮습니다(비활성 전문가도 메모리를 어느 정도 차지하기 때문입니다).
 
- **Granularity** 
+ **세분도**
 
-Beyond sparsity, we need to decide how large each expert should be. This is captured by  *granularity* , a metric introduced by Ant Group. Let's pin down what we mean by this term, as terminology varies across papers and some use slightly different formulas. Here, we'll use the definition that matches the plots we reference:
+희소성 외에도 각 전문가의 크기를 정해야 합니다. 전문가 크기는 Ant Group이 도입한 지표인  *세분도(granularity)* 로 나타냅니다. 논문마다 용어가 다르고 조금씩 다른 공식을 쓰기도 하므로, 이 용어가 무엇을 뜻하는지 분명히 해 두겠습니다. 여기서는 우리가 인용하는 그래프와 맞는 정의를 사용합니다.
 
 $$
 G = \frac{\alpha*d_{\text{model}}}{d_{\text{expert}}} \text{ with } \alpha = 2 \text{ or } 4
 $$
 
-A higher granularity value corresponds to having more experts with smaller dimension (given a fixed number of parameters). This metric is a ratio between the expert dimension ( $d_{\text{expert}}$ ) and the model dimension ( $d_{\text{model}}$ ). 
+세분도 값이 높을수록 (파라미터 수가 고정되어 있을 때) 차원이 더 작은 전문가를 더 많이 둔다는 뜻입니다. 이 지표는 전문가 차원( $d_{\text{expert}}$ )과 모델 차원( $d_{\text{model}}$ )의 비율입니다.
 
-In dense models, a common rule of thumb is to have the dimension of the MLP set to  $d_{\text{intermediate}} = 4 * d_{\text{model}}$ . If  $\alpha = 4$  (following @krajewski2024scalinglawsfinegrainedmixture), you can loosely view granularity as how many experts it would take to match the dense MLP width ( $4\, d_{\text{model}} = d_{\text{intermediate}} = G\, d_{\text{expert}}$ ). 
+밀집 모델에서는 흔히 MLP의 차원을  $d_{\text{intermediate}} = 4 * d_{\text{model}}$ 로 두는 경험칙을 씁니다.  $\alpha = 4$ 로 두면(@krajewski2024scalinglawsfinegrainedmixture 방식), 세분도는 밀집 MLP의 너비에 맞추려면 전문가가 몇 개 필요한지를 나타낸다고 대략 볼 수 있습니다( $4\, d_{\text{model}} = d_{\text{intermediate}} = G\, d_{\text{expert}}$ ).
 
-This interpretation is only a rough heuristic: Modern MoE designs often allocate much larger total capacity than a single dense MLP, so the one-to-one match breaks down in practice. The Ant Group team chose  $\alpha = 2$ , which is simply a different normalization choice. For consistency, we will pick this convention and stick to it. 
+다만 이 해석은 대략적인 경험칙일 뿐입니다. 최신 MoE 설계는 단일 밀집 MLP보다 훨씬 큰 전체 용량을 할당하는 경우가 많아서, 실제로는 일대일 대응이 성립하지 않습니다. Ant Group 팀은  $\alpha = 2$ 를 선택했는데, 정규화 방식을 다르게 고른 것일 뿐입니다. 일관성을 위해 우리도 이 규칙을 택해 계속 사용하겠습니다.
 
 <Sidenote>
 
-Because $G$ scales with $d_{\text{model}}$, cross-model comparisons can be tricky when model widths differ.
+$G$ 는 $d_{\text{model}}$ 에 비례하므로 모델 너비가 서로 다르면 모델 간 비교가 까다로울 수 있습니다.
 </Sidenote>
 
   
 
-Still, here's a table with the different values for some recent MoE releases:
+그래도 최근 공개된 몇몇 MoE 모델의 값을 표로 정리해 보았습니다.
 
-| Model | $(d_\text{model})$ | $(d_\text{expert})$ | $(G = 2 d_\text{model} / d_\text{expert})$ | Year |
+| 모델 | $(d_\text{model})$ | $(d_\text{expert})$ | $(G = 2 d_\text{model} / d_\text{expert})$ | 연도 |
 | --- | --- | --- | --- | --- |
 | Mixtral-8x7B | 4,096 | 14,336 | 0.571 | 2023 |
 | gpt-oss-120b | 2880 | 2880 | 2.0 | 2025 |
@@ -1529,124 +1529,124 @@ Still, here's a table with the different values for some recent MoE releases:
 | DeepSeek-V3 | 7168 | 2048 | 7.0 | 2024 |
 | Qwen3-Next-80B-A3B | 2048 | 512 | 8.0 | 2025 |
 
-Let's talk about how granularity shapes behavior. From [Ant Group's paper](https://arxiv.org/pdf/2507.17702):
+세분도가 모델의 동작에 어떤 영향을 주는지 이야기해 보겠습니다. 다음은 [Ant Group의 논문](https://arxiv.org/pdf/2507.17702)에 실린 그림입니다.
 
-<Image src={img_75ae60ff_50be_48e1_aad2_a8fc56120d3d_2921384e_bcac_80c2_984b_d81404e4bb7c} alt="Image" />
+<Image src={img_75ae60ff_50be_48e1_aad2_a8fc56120d3d_2921384e_bcac_80c2_984b_d81404e4bb7c} alt="이미지" />
 
-Granularity doesn't look like the primary driver of EL—it helps, especially for values above 2, but it's not the dominant factor determining the loss. And there's a sweet spot: Pushing granularity higher helps up to a point, and then gains flatten. So, granularity is a useful tuning knob with a clear trend toward higher values in recent releases, but it shouldn't be optimized in isolation.
+세분도는 EL을 좌우하는 주요 요인으로 보이지는 않습니다. 특히 2보다 큰 값에서 도움이 되기는 하지만, 손실을 결정하는 지배적인 요인은 아닙니다. 또한 최적점이 있습니다. 세분도를 높이면 어느 지점까지는 도움이 되지만, 그 뒤로는 개선 폭이 평탄해집니다. 따라서 세분도는 쓸모 있는 조정 손잡이이고 최근 공개된 모델들에서 값이 높아지는 추세가 뚜렷하지만, 세분도만 따로 떼어 최적화해서는 안 됩니다.
 
-Another method that is used widely to improve MoEs is the concept of  *shared experts* . Let's have a look!
+MoE를 개선하기 위해 널리 쓰이는 또 다른 방법은  *공유 전문가* 라는 개념입니다. 함께 살펴보겠습니다!
 
- **Shared Experts** 
+ **공유 전문가**
 
-A shared expert setup routes every token to a small set of always-on experts. These shared experts absorb the basic, recurring patterns in the data so the remaining experts can specialize more aggressively. In practice, you usually don't need many of them; model designers commonly choose one, at most two. As granularity increases (e.g., moving from a Qwen3-style setting to something closer to Qwen3-Next), shared experts tend to become more useful. Looking at the following plot from @antgroup, the overall impact is modest; it doesn't dramatically change the EL. A simple rule of thumb works well in most cases: Just use one shared expert. This matches choices in models like DeepSeek-V3, Kimi K2, and Qwen3-Next and tends to maximize efficiency without adding unnecessary complexity. 
+공유 전문가 구성에서는 모든 토큰을 항상 켜져 있는 소수의 전문가에게 보냅니다. 공유 전문가가 데이터에서 반복되는 기본 패턴을 흡수하므로 나머지 전문가는 더 적극적으로 전문화할 수 있습니다. 실제로는 공유 전문가가 많이 필요하지 않은 경우가 대부분이며, 모델 설계자들은 보통 하나, 많아야 두 개를 둡니다. 세분도가 높아질수록(예를 들어 Qwen3 방식의 설정에서 Qwen3-Next에 가까운 설정으로 옮겨 갈수록) 공유 전문가가 더 유용해지는 경향이 있습니다. @antgroup 논문의 다음 그래프를 보면 전체적인 영향은 크지 않으며, EL을 극적으로 바꾸지는 않습니다. 대부분의 경우 간단한 경험칙이 잘 통합니다. 공유 전문가는 하나만 쓰세요. DeepSeek-V3, Kimi K2, Qwen3-Next 같은 모델의 선택과도 일치하며, 불필요한 복잡도를 더하지 않으면서 효율을 극대화하는 경향이 있습니다.
 
 <Wide>
 
-<Image src={Capture_decran_2025_10_21_a_11_11_38_2931384e_bcac_8008_ad8d_d5ab0c539d3a} alt="Image" />
+<Image src={Capture_decran_2025_10_21_a_11_11_38_2931384e_bcac_8008_ad8d_d5ab0c539d3a} alt="이미지" />
 </Wide>
 
-So, a shared expert is an expert where some tokens are always routed through. What about the other experts? How do we learn when to route to each one, and make sure that we don't just use a handful of experts and leave others idle? Next we'll discuss load balancing, which tackles exactly that problem.
+정리하면 공유 전문가는 일부 토큰이 항상 거쳐 가는 전문가입니다. 그렇다면 나머지 전문가는 어떨까요? 각 전문가로 언제 라우팅할지 어떻게 학습하고, 소수의 전문가만 쓰고 나머지는 놀게 두는 일을 어떻게 막을까요? 다음으로 바로 이 문제를 다루는 부하 분산을 살펴보겠습니다.
 
- **Load Balancing** 
+ **부하 분산**
 
-Load balancing is the critical piece in MoE. If it's set up poorly, it can undermine every other design choice. To see why poor load balancing will cause us a lot of pain, consider a very simple distributed training setup where we have four GPUs, and we distribute the four experts of our model evenly across the GPUs. If the routing collapses and all tokens are routed to expert 1, this means that only a quarter of our GPUs are utilized, which is very bad for training and inference efficiency. The effective learning capacity of our model will also decrease, as not all experts are activated.
+부하 분산은 MoE의 핵심 요소입니다. 부하 분산을 잘못 설정하면 다른 설계 선택이 모두 무색해질 수 있습니다. 부하 분산이 나쁘면 왜 큰 고생을 하게 되는지 보기 위해 아주 단순한 분산 학습 설정을 생각해 보겠습니다. GPU 네 개가 있고, 모델의 전문가 네 개를 GPU에 고르게 나누어 배치합니다. 라우팅이 붕괴해 모든 토큰이 전문가 1로만 라우팅되면 GPU 네 개 중 하나만 활용된다는 뜻이며, 학습과 추론 효율에 매우 나쁩니다. 모든 전문가가 활성화되지는 않으므로 모델의 실질적인 학습 용량도 줄어듭니다.
 
-To address this issue, we can we can add an extra loss term to the router. Here you can see the standard auxiliary loss–based load balancing:
+이 문제를 해결하려면 라우터에 추가 손실 항을 더할 수 있습니다. 다음은 표준적인 보조 손실 기반 부하 분산입니다.
 
 $$
 \mathcal{L}_{\text{Bal}} \;=\; \alpha \sum_{i=1}^{N_{r}} f_{i}\, P_{i}
 $$
 
-This simple formula uses just three factors: the coefficient  $\alpha$  determines the strength of the loss,  $f_i$  is the traffic fraction (the fraction of tokens going through expert  $i$ ), and  $P_i$  is the probability mass, which simply sums the probability of the tokens going through the expert. They are both necessary:  $f_i$  corresponds to the actual balancing, while  $P_i$  is smooth and differentiable, allowing the gradient to flow. 
+이 간단한 공식에는 세 가지 요소만 쓰입니다. 계수  $\alpha$ 는 손실의 강도를 정하고,  $f_i$ 는 트래픽 비율(전문가  $i$ 를 거치는 토큰의 비율)이며,  $P_i$ 는 확률 질량으로 해당 전문가를 거치는 토큰들의 확률을 단순히 합한 값입니다. 두 항 모두 필요합니다.  $f_i$ 는 실제 균형에 해당하고,  $P_i$ 는 매끄럽고 미분 가능해서 그래디언트가 흐를 수 있게 합니다.
 
-If we achieve perfect load balancing, we get  $f_i=P_i=1/N_r$ . However, we need to be careful how we tune  $\alpha$ : If it's too small, we don't guide routing enough, and if it's too big, routing uniformity becomes more important than the primary language model loss.
+부하가 완벽하게 분산되면  $f_i=P_i=1/N_r$ 이 됩니다. 하지만  $\alpha$ 를 조정할 때는 주의해야 합니다. 너무 작으면 라우팅을 충분히 이끌지 못하고, 너무 크면 주된 언어 모델 손실보다 라우팅의 균일성이 더 중요해집니다.
 
-<Note title="Loss-free load balancing" emoji="💡" variant="info">
+<Note title="손실 항 없는 부하 분산" emoji="💡" variant="info">
 
-It's also possible to achieve balancing without an explicit loss term. DeepSeek-V3 [@deepseekv3] introduced a simple bias term added to the affinity scores that go into the routing softmax. If a router is overloaded, the score is decreased a bit (by a constant factor  $\gamma$ ), thus making it less likely to be selected, and it's increased by  $\gamma$  if the expert is underutilized. This simple adaptive rule achieves load balancing.
+명시적인 손실 항 없이도 부하를 분산할 수 있습니다. DeepSeek-V3 [@deepseekv3]는 라우팅 소프트맥스에 들어가는 친화도 점수(affinity score)에 더하는 간단한 편향 항을 도입했습니다. 라우터에 부하가 몰리면 점수를 상수  $\gamma$ 만큼 조금 낮춰 선택될 가능성을 줄이고, 전문가가 충분히 활용되지 않으면 점수를  $\gamma$ 만큼 높입니다. 이 간단한 적응형 규칙만으로 부하 분산을 이룰 수 있습니다.
 </Note>
 
 
 
-A key detail is the scope at which you compute routing statistics: Are  $f_i$  and  $P_i$  computed per local batch (each worker's mini-batch) or globally (aggregated across workers/devices)? The Qwen team's analysis [@qiu2025demonsdetailimplementingload] shows that when there isn't enough token diversity in each local batch, local computation can hurt both expert specialization (a good proxy for routing health) and overall model performance. Expert specialization is the phenomenon where one or more experts are activated more often than others for a specific domain. In other words, if a local batch is narrow, its routing stats become noisy/biased and don't lead to good balancing. This implies that we should use global statistics (or at least cross-device aggregation) whenever feasible. Notably, at the time of that paper, many frameworks—including Megatron—computed these statistics locally by default.
+핵심적인 세부 사항은 라우팅 통계를 계산하는 범위입니다.  $f_i$ 와  $P_i$ 를 로컬 배치(각 워커의 미니배치)마다 계산할까요, 아니면 전역으로(워커/장치 전체에서 집계해) 계산할까요? Qwen 팀의 분석 [@qiu2025demonsdetailimplementingload]에 따르면 각 로컬 배치에 토큰 다양성이 충분하지 않을 때 로컬 계산은 전문가 전문화(라우팅 상태를 잘 보여 주는 대리 지표)와 전체 모델 성능을 모두 해칠 수 있습니다. 전문가 전문화란 특정 도메인에서 하나 이상의 전문가가 다른 전문가보다 더 자주 활성화되는 현상입니다. 즉, 로컬 배치가 좁으면 라우팅 통계에 노이즈나 편향이 생겨 부하가 제대로 분산되지 않습니다. 따라서 가능하면 전역 통계(또는 최소한 장치 간 집계)를 사용해야 합니다. 특히 이 논문이 나올 당시에는 Megatron을 포함한 많은 프레임워크가 기본적으로 이 통계를 로컬에서 계산했습니다.
 
-The following plot from the Qwen paper illustrates the difference between micro-batch and global batch aggregation and its impact on performance and specialization:
+다음 Qwen 논문의 그래프는 마이크로배치 집계와 전역 배치 집계의 차이, 그리고 그 차이가 성능과 전문화에 미치는 영향을 보여 줍니다.
 
 <Wide>
 
-<Image src={Capture_decran_2025_10_21_a_15_34_27_2931384e_bcac_8066_834b_c485ae8d1fa5} alt="Image" />
+<Image src={Capture_decran_2025_10_21_a_15_34_27_2931384e_bcac_8066_834b_c485ae8d1fa5} alt="이미지" />
 </Wide>
 
-Generally, ablating architecture choices around MoE is tricky as there is an interplay with many aspects. For example, the usefulness of a shared expert might depend on the granularity of the model. It's worth spending some time to make sure you have a good set of experiments to really get the insights you are looking for! 
+일반적으로 MoE 관련 아키텍처 선택을 어블레이션(ablation)하기는 까다롭습니다. 여러 측면이 서로 얽혀 있기 때문입니다. 예를 들어 공유 전문가가 얼마나 유용한지는 모델의 세분도에 따라 달라질 수 있습니다. 원하는 통찰을 실제로 얻을 수 있도록 실험 구성을 잘 갖추는 데 시간을 들일 가치가 있습니다!
 
-We've covered the fundamentals of MoEs, but there's still more to discover. Here's a non-exhaustive list of items you might want to explore:
+지금까지 MoE의 기본을 다뤘지만 아직 살펴볼 내용이 더 있습니다. 더 알아볼 만한 주제를 일부만 꼽으면 다음과 같습니다.
 
-- Zero-computation experts, MoE layer rescaling, and training monitoring (the [LongCat-Flash paper](https://arxiv.org/abs/2509.01322))
-- Orthogonal loss load balancing (as in [ERNIE 4.5](https://github.com/PaddlePaddle/ERNIE))
-- Scheduling the load-balancing coefficient over training
-- Architecture/optimization interactions with MoE, like:
-    - Whether optimizer rankings change for MoE
-    - How to apply μP to MoE
-    - How to adapt the learning rate for MoE (since the experts don't see the same number of token per batch)
+- 연산 없는 전문가(zero-computation expert), MoE 레이어 재조정(rescaling), 학습 모니터링([LongCat-Flash 논문](https://arxiv.org/abs/2509.01322))
+- 직교 손실 기반 부하 분산([ERNIE 4.5](https://github.com/PaddlePaddle/ERNIE) 방식)
+- 학습 중 부하 분산 계수 스케줄링
+- MoE와 아키텍처/최적화의 상호작용. 예를 들면 다음과 같습니다.
+    - MoE에서는 옵티마이저 간 순위가 달라지는지
+    - MoE에 μP를 적용하는 방법
+    - MoE에서 학습률을 조정하는 방법(전문가마다 배치당 보는 토큰 수가 다르기 때문)
 
-- Number of dense layers at the start
+- 앞부분에 두는 밀집 레이어의 수
 
-We leave it up to you, eager reader, to go further down the rabbit hole, while we now move on to the last major architecture choice: hybrid models!
+열정적인 독자 여러분이 이 토끼굴 속으로 더 깊이 들어가 보시도록 남겨 두고, 우리는 마지막 주요 아키텍처 선택인 하이브리드 모델로 넘어가겠습니다!
 
-#### Excursion: Hybrid Models
+#### 번외편: 하이브리드 모델
 
-A recent trend is to augment the standard dense or MoE architecture with state space models (SSMs) or linear attention mechanisms [@falconh1; @minimax01]. These new classes of models try to address some of the fundamental weaknesses of transformers in dealing efficiently with very long contexts. They take a middle ground between recurrent models, which can process arbitrarily long contexts with linear scaling but may struggle to fully leverage contextual information, and transformers, which get very expensive at long context lengths but can leverage the patterns in the context very well. 
+최근에는 표준 밀집 또는 MoE 아키텍처에 상태 공간 모델(SSM)이나 선형 어텐션 메커니즘을 더하는 추세입니다 [@falconh1; @minimax01]. 이런 새로운 계열의 모델은 매우 긴 컨텍스트를 효율적으로 다루는 데 있어 트랜스포머가 가진 근본적인 약점 일부를 해결하려고 합니다. 이 모델들은 순환 모델과 트랜스포머의 중간 지점을 택합니다. 순환 모델은 임의로 긴 컨텍스트를 선형 비용으로 처리할 수 있지만 컨텍스트 정보를 충분히 활용하는 데 어려움을 겪을 수 있고, 트랜스포머는 컨텍스트가 길어지면 비용이 매우 커지지만 컨텍스트 속 패턴을 아주 잘 활용합니다.
 
-There have been some studies that aimed to understand the strengths and weaknesses of SSMs. For example, @waleffe2024empiricalstudymambabasedlanguage looked at Mamba models (a form of SSM) and found that they perform well on many benchmarks but underperform on MMLU and a few other tasks. They hypothesize that it's the lack of in-context learning causing the gap. Combining SSMs with blocks from dense or MoE models gives the best of both worlds, thus the name  *hybrid models* .
+SSM의 강점과 약점을 이해하려는 연구도 있었습니다. 예를 들어 @waleffe2024empiricalstudymambabasedlanguage 연구진은 Mamba 모델(SSM의 한 형태)을 살펴보고, 많은 벤치마크에서 좋은 성능을 내지만 MMLU를 비롯한 몇몇 과제에서는 성능이 떨어진다는 것을 발견했습니다. 연구진은 이 격차의 원인이 인컨텍스트 학습 능력의 부족이라고 가정합니다. SSM을 밀집 또는 MoE 모델의 블록과 결합하면 두 방식의 장점을 모두 얻을 수 있으며, 그래서  *하이브리드 모델* 이라는 이름이 붙었습니다.
 
-The core idea behind these linear attention mechanisms is to reorder computations so attention no longer costs  $O(n^2d)$ , which becomes intractable at long context lengths. How does that work? First, recall the attention formulation at inference. Producing the output for token  $t$  looks like:
+이런 선형 어텐션 메커니즘의 핵심 아이디어는 계산 순서를 바꿔서 어텐션 비용이 더 이상  $O(n^2d)$ 가 되지 않게 하는 것입니다. 이 비용은 컨텍스트가 길어지면 감당할 수 없게 됩니다. 어떻게 그럴 수 있을까요? 먼저 추론 시의 어텐션 공식을 떠올려 봅시다. 토큰  $t$ 의 출력은 다음과 같이 계산합니다.
 
 $$
 \mathbf{o}_{t} \;=\; \sum_{j=1}^{t} \frac{\exp\!\big(\mathbf{q}_{t}^{\top}\mathbf{k}_{j}\big) \mathbf{v}_{j}}{\sum_{l=1}^{t} \exp\!\big(\mathbf{q}_{t}^{\top}\mathbf{k}_{l}\big)} \,
 $$
 
-Now drop the softmax:
+이제 소프트맥스를 없애 봅시다.
 
 $$
 o_t = \sum_{j=1}^{t} (q_t^\top k_j)\, v_j
 $$
 
-Reordering gives:
+순서를 바꾸면 다음과 같습니다.
 
 $$
 \quad\sum_{j=1}^{t}(q_t^\top k_j)\,v_j = \Big(\sum_{j=1}^{t} v_j k_j^\top\Big) q_t.
 $$
 
-We define the running state:
+누적 상태(running state)를 다음과 같이 정의합니다.
 
 $$
 S_t \triangleq \sum_{j=1}^{t} k_j v_j^\top = K_{1:t}^\top V_{1:t} \in \mathbb{R}^{d\times d}
 $$
 
-with the simple update:
+갱신은 간단합니다.
 
 $$
 S_t = S_{t-1} + k_t v_t^\top 
 $$
 
-So we can write:
+따라서 다음과 같이 쓸 수 있습니다.
 
 $$
 o_t = S_t q_t    = S_{t-1} q_t + v_t (k_t^\top q_t)
 $$
 
-Why is the reordering important? The left form  $\sum_{j\le t}(q_t^\top k_j)v_j$  means "for each past token  $j$ , take a dot  $q_t^\top k_j$  (a scalar), use it to scale  $v_j$ , and add up those  $t$  vectors"—that's about  $O(td)$  work at step  $t$ . The right form rewrites this as  $\big(\sum_{j\le t} v_j k_j^\top\big) q_t$ . You keep a single running state matrix  $S_t=\sum_{j\le t} v_j k_j^\top\in\mathbb{R}^{d\times d}$  that already summarizes all past  $(k_j,v_j)$ . Each new token updates it with one outer product  $v_t k_t^\top$  at cost  $O(d^2)$ ; then the output is just one matrix–vector multiply,  $S_t q_t$  (also  $O(d^2)$ ). So, generating  $T$  tokens from scratch with the left form is  $O(T^2 d)$ , while maintaining  $S_t$  and using the right form is  $O(T d^2)$ . Intuitively: left = "many small dot-scale-adds each step"; right = "one pre-summarized matrix times the query," trading dependence on sequence length for dependence on dimension. We focus on inference and recurring form here, but it's also more efficient in training, where the reordering is as simple as the following equation:
+계산 순서를 바꾸는 것이 왜 중요할까요? 왼쪽 식  $\sum_{j\le t}(q_t^\top k_j)v_j$ 는 "과거의 각 토큰  $j$ 에 대해 내적  $q_t^\top k_j$ (스칼라)를 구하고, 그 값으로  $v_j$ 의 크기를 조정한 뒤,  $t$ 개의 벡터를 모두 더한다"는 뜻입니다. 단계  $t$ 마다 약  $O(td)$ 의 작업이 필요합니다. 오른쪽 식은 같은 계산을  $\big(\sum_{j\le t} v_j k_j^\top\big) q_t$ 로 다시 씁니다. 과거의 모든  $(k_j,v_j)$ 를 이미 요약한 누적 상태 행렬  $S_t=\sum_{j\le t} v_j k_j^\top\in\mathbb{R}^{d\times d}$  하나만 유지하면 됩니다. 새 토큰이 들어올 때마다 외적  $v_t k_t^\top$  하나로 상태를 갱신하며, 비용은  $O(d^2)$ 입니다. 그다음 출력은 행렬-벡터 곱  $S_t q_t$  한 번이면 됩니다(역시  $O(d^2)$ ). 따라서 토큰  $T$ 개를 처음부터 생성할 때 왼쪽 식으로는  $O(T^2 d)$ 가 들지만,  $S_t$ 를 유지하며 오른쪽 식을 쓰면  $O(T d^2)$ 입니다. 직관적으로 말하면 왼쪽은 "단계마다 작은 내적·스케일·덧셈을 많이 하는 것"이고, 오른쪽은 "미리 요약해 둔 행렬 하나에 쿼리를 곱하는 것"입니다. 즉, 시퀀스 길이에 대한 의존성을 차원에 대한 의존성으로 맞바꿉니다. 여기서는 추론과 순환 형태에 집중했지만, 이 방식은 학습에서도 더 효율적입니다. 학습에서는 다음 식처럼 순서를 바꾸기만 하면 됩니다.
 
 $$
 \underset{n\times n}{(QK^\top)}\,V \;=\; Q\,\underset{d\times d}{(K^\top V)}
 $$
 
-This now looks very similar to an RNN-like structure. We've solved our issue, right? Almost. In practice, the softmax plays an important stabilizing role, and the naive linear attention can be unstable without some normalization. To address this, a few practical variants have been proposed.
+이제 RNN과 매우 비슷한 구조가 되었습니다. 문제가 해결된 걸까요? 거의 그렇습니다. 실제로는 소프트맥스가 중요한 안정화 역할을 하며, 단순한 선형 어텐션은 정규화 없이는 불안정할 수 있습니다. 이 문제를 해결하기 위해 몇 가지 실용적인 변형이 제안되었습니다.
 
  **Lightning Attention** 
 
-Building on the NormAttention idea [@qin2022devillineartransformer], which replaces softmax normalization with norm-based scaling to control attention magnitude and improve stability, the [Lightning Attention variant](https://arxiv.org/abs/2405.17381) focuses on making the implementation fast and efficient, with a few important architectural tweaks. Here are the formulas for each:
+NormAttention 아이디어 [@qin2022devillineartransformer]는 소프트맥스 정규화를 노름 기반 스케일링으로 바꿔 어텐션 크기를 제어하고 안정성을 높입니다. [Lightning Attention 변형](https://arxiv.org/abs/2405.17381)은 이 아이디어를 바탕으로 몇 가지 중요한 아키텍처 수정을 더해, 구현을 빠르고 효율적으로 만드는 데 집중합니다. 각각의 공식은 다음과 같습니다.
 
  **NormAttention:** 
 
@@ -1656,13 +1656,13 @@ $$
 
  **Lightning Attention:** 
 
-Step 1: QKV projection + SiLU
+1단계: QKV 프로젝션 + SiLU
 
 $$
 Q = \text{SiLU}(Q), \; K = \text{SiLU}(K), \; V = \text{SiLU}(V), \; G = \sigma(G)
 $$
 
-Step 2: Decay factor and ( $S_t = KV_t$  in the previous notation)
+2단계: 감쇠 계수 적용(앞의 표기로는  $S_t = KV_t$ )
 
 $$
 KV_t = \lambda \, KV_{t-1} + k_t^\top v_t
@@ -1672,13 +1672,13 @@ $$
 o_t = q_t \, KV_t
 $$
 
-Step 3: RMSNorm + gate
+3단계: RMSNorm + 게이트
 
 $$
 Y = G \odot \text{RMSNorm}(O)
 $$
 
-Empirically, hybrid models with Lightning Attention match softmax attention on most tasks, according to @minimax01.
+@minimax01 연구진에 따르면, 실험적으로 Lightning Attention을 쓴 하이브리드 모델은 대부분의 과제에서 소프트맥스 어텐션과 비슷한 성능을 냅니다.
 
 <Wide>
 
@@ -1687,30 +1687,30 @@ Empirically, hybrid models with Lightning Attention match softmax attention on m
 
 
 
-What's interesting here is that on retrieval tasks like NIAH it can do much much better than full softmax attention, which might indicate that there is some synergy between the softmax and the linear layer.
+흥미로운 점은 NIAH 같은 검색(retrieval) 과제에서는 이 하이브리드 모델이 전체 소프트맥스 어텐션보다 훨씬 더 좋은 성능을 낸다는 것입니다. 소프트맥스와 선형 레이어 사이에 어떤 시너지가 있다는 뜻일 수 있습니다.
 
 <Note title="MiniMax M2" variant="info">
 
-Surprisingly, the recently released MiniMax-M2 does not use hybrid or linear attention. According to the team's <a href="[https://x.com/zpysky1125/status/1983383094607347992](https://x.com/zpysky1125/status/1983383094607347992)" target="_blank">pretraining lead</a>, while early MiniMax-M1 experiments with Lightning Attention looked promising at smaller scales on the benchmarks popular at the time (MMLU, BBH, MATH), they found it had "clear deficits in complex, multi-hop reasoning tasks" at larger scales. They also cite numerical precision issues during reinforcement learning (RL) training and infrastructure maturity as key blockers, concluding that designing a new architecture at scale is a multivariable problem that is hard and compute-intensive due to the sensitivity to other parameters (data distribution, optimizer, etc.). However, they acknowledge that "as GPU compute growth slows while data length keeps increasing, the benefits of linear and sparse attention will gradually emerge." This highlights both the complexity of architecture ablations and the gap between research and production reality.
+놀랍게도 최근 공개된 MiniMax-M2는 하이브리드 어텐션도, 선형 어텐션도 사용하지 않습니다. MiniMax 팀의 <a href="[https://x.com/zpysky1125/status/1983383094607347992](https://x.com/zpysky1125/status/1983383094607347992)" target="_blank">사전 학습 책임자</a>에 따르면, 초기 MiniMax-M1에서 Lightning Attention을 적용한 실험은 작은 모델 규모에서는 당시 널리 쓰이던 벤치마크(MMLU, BBH, MATH)를 기준으로 유망해 보였습니다. 하지만 규모를 키우자 "복잡한 멀티홉 추론 과제에서 뚜렷한 결함"이 있다는 것을 확인했습니다. 또한 강화 학습(RL) 중의 수치 정밀도 문제와 인프라 성숙도를 주요 걸림돌로 꼽으며, 대규모에서 새로운 아키텍처를 설계하는 일은 다른 파라미터(데이터 분포, 옵티마이저 등)에 민감하기 때문에 어렵고 연산 비용이 많이 드는 다변수 문제라고 결론지었습니다. 그렇지만 "GPU 연산 성능의 성장이 둔화되는 반면 데이터 길이는 계속 늘어나고 있으므로, 선형 어텐션과 희소 어텐션의 이점이 점차 드러날 것"이라고 인정했습니다. 이 사례는 아키텍처 어블레이션이 얼마나 복잡한지, 그리고 연구와 실제 프로덕션 사이에 얼마나 큰 간극이 있는지를 함께 보여 줍니다.
 </Note>
 
-Now, let's take a look at some other attention methods and see how they can be understood within a unified framework.
+이제 다른 어텐션 방법들을 살펴보고, 이 방법들을 하나의 통합된 틀로 이해할 수 있는 방법을 알아보겠습니다.
 
- **Advanced Linear Attention** 
+ **고급 선형 어텐션**
 
-A helpful lesson from recurrent models is to let the state occasionally let go of the past. In practice, that means introducing a gate  $\mathbf{G}_t$  for the previous state:
+순환 모델에서 얻을 수 있는 유용한 교훈은 상태가 이따금 과거를 놓아 버리게 하라는 것입니다. 실제로는 이전 상태에 게이트  $\mathbf{G}_t$ 를 도입한다는 뜻입니다.
 
 $$
 \mathbf{S}_t \;=\; \mathbf{G}_t \odot \mathbf{S}_{t-1} \;+\; \mathbf{v}_t \mathbf{k}_t^{\top}
 $$
 
-Almost all recent linear attention mechanisms have this gating component, with different implementations of  $\mathbf{G}_t$ . Here's a list of variants for the gate and the corresponding architectures from [Yang et al., 2024](https://arxiv.org/abs/2312.06635).
+최근의 선형 어텐션 메커니즘은 거의 모두 이 게이트 구성 요소를 갖고 있으며,  $\mathbf{G}_t$ 의 구현 방식만 다릅니다. 다음은 [Yang et al., 2024](https://arxiv.org/abs/2312.06635)에서 정리한 게이트 변형과 해당 아키텍처 목록입니다.
 
 <Wide>
 
-<Reference caption="Gated linear attention formulations of recent models, which vary in their parameterization of $G_t$. The bias terms are omitted.">
+<Reference caption="최근 모델들의 게이트 선형 어텐션 공식입니다. 모델마다 $G_t$ 의 매개변수화 방식이 다릅니다. 편향 항은 생략했습니다.">
 
-| Model | Parameterization | Learnable Parameters |
+| 모델 | 매개변수화 | 학습 가능한 파라미터 |
 | --- | --- | --- |
 | Mamba [@mamba] | $\mathbf{G}_t = \exp(-(\mathbf{1}^\top \boldsymbol{\alpha}_t) \odot \exp(\mathbf{A})), \quad \boldsymbol{\alpha}t = \text{softplus}(\mathbf{x}t \mathbf{W}{\alpha_1} \mathbf{W}{\alpha_2})$ | $\mathbf{A} \in \mathbb{R}^{d_k \times d_v}, \quad \mathbf{W}{\alpha_1} \in \mathbb{R}^{d \times \frac{d}{16}}, \quad \mathbf{W}{\alpha_2} \in \mathbb{R}^{\frac{d}{16} \times d_v}$ |
 | Mamba-2 [@mamba2] | $\mathbf{G}_t = \gamma_t \mathbf{1}^\top \mathbf{1}, \quad \gamma_t = \exp(-\text{softplus}(\mathbf{x}t \mathbf{W}{\gamma})\exp(a))$ | $\mathbf{W}_{\gamma} \in \mathbb{R}^{d \times 1}, \quad a \in \mathbb{R}$ |
@@ -1727,105 +1727,105 @@ Almost all recent linear attention mechanisms have this gating component, with d
 
 
 
-One notable variant is Mamba-2 [@mamba2]; it's used in several hybrid models, such as Nemotron-H [@nemotronh], Falcon H1 [@falconh1], and Granite-4.0-h [@granite4]. However, it's still early days, and there's important nuance to consider when scaling to large hybrid models. 
+주목할 만한 변형은 Mamba-2 [@mamba2]입니다. Nemotron-H [@nemotronh], Falcon H1 [@falconh1], Granite-4.0-h [@granite4] 등 여러 하이브리드 모델이 이 변형을 사용합니다. 하지만 아직 초기 단계이며, 하이브리드 모델의 규모를 크게 키울 때는 고려해야 할 중요한 세부 사항이 있습니다.
 
-While these attention mechanisms show promise, MiniMax's experience with M2 highlights that benefits at small scale don't always translate to large-scale production systems. That said, hybrid models are moving quickly and remain a solid choice for frontier training. Qwen3-Next, which includes a gated DeltaNet update [@qwen3next], reports that they are faster at inference for long contexts, faster to train, and perform better on standard benchmarks. We're also looking forward to Kimi's next model, which will most likely use their new [Kimi Delta Attention](https://arxiv.org/abs/2510.26692). And we should mention Sparse Attention, which addresses the long-context scaling problem by computing attention only for selected blocks or queries. Some examples are Native Sparse Attention [@nsa], DeepSeek Sparse Attention [@dsa], and InfLLM v2 [@minicpm4].
+이런 어텐션 메커니즘은 가능성을 보여 주지만, MiniMax의 M2 사례에서 알 수 있듯이 작은 규모에서 얻은 이점이 대규모 프로덕션 시스템으로 항상 이어지지는 않습니다. 그렇더라도 하이브리드 모델은 빠르게 발전하고 있으며, 프런티어 모델 학습에서 여전히 탄탄한 선택지입니다. 게이트 DeltaNet 갱신을 포함한 Qwen3-Next [@qwen3next]는 긴 컨텍스트에서 추론이 더 빠르고, 학습도 더 빠르며, 표준 벤치마크에서 성능도 더 좋다고 보고합니다. Kimi의 다음 모델도 기대됩니다. 이 모델은 Kimi 팀이 새로 발표한 [Kimi Delta Attention](https://arxiv.org/abs/2510.26692)을 사용할 가능성이 큽니다. 희소 어텐션(Sparse Attention)도 언급해야겠습니다. 희소 어텐션은 선택한 블록이나 쿼리에 대해서만 어텐션을 계산해 긴 컨텍스트의 확장 문제를 해결합니다. Native Sparse Attention [@nsa], DeepSeek Sparse Attention [@dsa], InfLLM v2 [@minicpm4] 등이 그 예입니다.
 
-Now that you know what the architecture options are, how do you choose between them? Let's get that out of the way before moving on to tokenizers.
+이제 어떤 아키텍처 선택지가 있는지 알았으니, 그중 무엇을 골라야 할까요? 토크나이저로 넘어가기 전에 이 문제부터 정리하겠습니다.
 
-####  **To MoE or Not to MoE: Choosing a Base Architecture** 
+####  **MoE냐 아니냐: 기본 아키텍처 선택하기**
 
-The decision of whether to use a dense, MoE, or hybrid model typically depends on a few central factors: where you'll deploy the model, your team's expertise, and your timeline. Let's briefly go over the pros and cons of each option and build a simple decision tree for making that choice.
+밀집 모델, MoE, 하이브리드 모델 중 무엇을 쓸지는 보통 몇 가지 핵심 요인에 따라 정해집니다. 모델을 어디에 배포할지, 팀의 전문성, 그리고 일정입니다. 각 선택지의 장단점을 간단히 살펴보고, 선택을 돕는 간단한 의사 결정 트리를 만들어 보겠습니다.
 
- **Dense transformers**  are the standard decoder-only transformer architecture, where every parameter activates for every token. See the Harvard NLP blog post ["The Annotated Transformer"](https://nlp.seas.harvard.edu/2018/04/03/attention.html) for the math and Jay Alammar's ["The Illustrated Transformer"](https://jalammar.github.io/illustrated-transformer/) to build your intuition.
+ **밀집 트랜스포머** 는 모든 토큰에 대해 모든 파라미터가 활성화되는 표준 디코더 전용 트랜스포머 아키텍처입니다. 수식은 Harvard NLP 블로그 글 ["The Annotated Transformer"](https://nlp.seas.harvard.edu/2018/04/03/attention.html)를, 직관을 기르려면 Jay Alammar의 ["The Illustrated Transformer"](https://jalammar.github.io/illustrated-transformer/)를 참고하세요.
 
-Pros: Widely supported, well understood, stable training, good performance per parameter.
+장점: 널리 지원되고, 잘 알려져 있으며, 학습이 안정적이고, 파라미터당 성능이 좋습니다.
 
-Cons: Compute scales linearly with size; a 70B model costs ~23× more than 3B.
+단점: 연산량이 모델 크기에 비례해 증가합니다. 70B 모델은 3B 모델보다 비용이 약 23배 더 듭니다.
 
 <Note variant="success">
 
-This is usually the default choice for memory-constrained use cases or new LLM trainers.
+메모리 제약이 있는 사용 사례나 LLM을 처음 학습하는 경우에는 보통 이 아키텍처가 기본 선택입니다.
 </Note>
 
- **Mixture of experts**  models replace feedforward layers in the transformer with multiple "experts." A gating network routes each token to just a few experts. The result is the capacity of a large network at a fraction of the compute. For example, [Kimi K2](https://huggingface.co/moonshotai/Kimi-K2-Instruct) has 1T total parameters but only 32B active per token. The catch is that all experts must be loaded in memory. For a visual guide, check out Maarten Grootendorst's [blog post](https://newsletter.maartengrootendorst.com/p/a-visual-guide-to-mixture-of-experts).
+ **전문가 혼합**  모델은 트랜스포머의 피드포워드 레이어를 여러 "전문가"로 바꿉니다. 게이팅 네트워크가 각 토큰을 소수의 전문가에게만 보냅니다. 그 결과 적은 연산량으로 큰 네트워크의 용량을 얻습니다. 예를 들어 [Kimi K2](https://huggingface.co/moonshotai/Kimi-K2-Instruct)는 전체 파라미터가 1T이지만 토큰당 활성 파라미터는 32B뿐입니다. 다만 모든 전문가를 메모리에 올려 두어야 한다는 단점이 있습니다. 시각적인 설명은 Maarten Grootendorst의 [블로그 글](https://newsletter.maartengrootendorst.com/p/a-visual-guide-to-mixture-of-experts)을 참고하세요.
 
-Pros: Better performance per compute for training and inference.
+장점: 학습과 추론 모두에서 연산량 대비 성능이 더 좋습니다.
 
-Cons: High memory demands (all experts must be loaded) and more complex training than dense transformers. Framework support is improving but less mature than for dense models, and distributed training is complex with expert placement, load balancing, and all-to-all communication challenges.
+단점: 메모리 요구량이 크고(모든 전문가를 메모리에 올려야 함) 밀집 트랜스포머보다 학습이 복잡합니다. 프레임워크 지원은 개선되고 있지만 밀집 모델보다 덜 성숙했고, 분산 학습에서는 전문가 배치, 부하 분산, all-to-all 통신 문제 때문에 복잡합니다.
 
 <Note variant="success">
 
-Use when you're not memory-constrained and want maximum performance per compute.
+메모리 제약이 없고 연산량 대비 성능을 최대한 끌어올리고 싶을 때 사용하세요.
 </Note>
 
- **Hybrid models**  combine transformers with state space models like Mamba, offering linear complexity for some operations, compared with attention's quadratic scaling. Some useful resources here are Sasha Rush's [blog post](https://srush.github.io/annotated-mamba/hard.html) and Maarten Grootendorst's [visual guide](https://newsletter.maartengrootendorst.com/p/a-visual-guide-to-mamba-and-state) to Mamba and SSMs. 
+ **하이브리드 모델** 은 트랜스포머와 Mamba 같은 상태 공간 모델을 결합합니다. 어텐션의 비용은 시퀀스 길이의 제곱에 비례해 늘어나지만, 하이브리드 모델은 일부 연산을 선형 복잡도로 처리합니다. 참고할 만한 자료로는 Sasha Rush의 [블로그 글](https://srush.github.io/annotated-mamba/hard.html)과 Maarten Grootendorst의 Mamba·SSM [시각 가이드](https://newsletter.maartengrootendorst.com/p/a-visual-guide-to-mamba-and-state)가 있습니다.
 
-Pros: Potentially better long context handling. More efficient for very long sequences.
+장점: 긴 컨텍스트를 더 잘 다룰 가능성이 있습니다. 매우 긴 시퀀스에서 더 효율적입니다.
 
-Cons: Less mature than dense and MoE architectures, with fewer proven training recipes. Limited framework support.
+단점: 밀집 아키텍처와 MoE 아키텍처보다 덜 성숙했으며, 검증된 학습 레시피가 적습니다. 프레임워크 지원이 제한적입니다.
 
 <Note variant="success">
 
-Use if you want to scale to very large contexts while reducing the inference overhead of standard transformers.
+매우 긴 컨텍스트로 확장하면서 표준 트랜스포머의 추론 오버헤드를 줄이고 싶다면 사용하세요.
 </Note>
 
 <Sidenote>
 
-We're also now seeing some teams explore diffusion models for text, but these models (and other experimental alternatives) are currently at such a early stage that we consider them out of scope for this document.
+텍스트용 확산(diffusion) 모델을 탐구하는 팀들도 생기고 있지만, 이런 모델(과 다른 실험적인 대안들)은 아직 매우 초기 단계여서 이 문서에서는 다루지 않습니다.
 </Sidenote>
 
-To make your decision, start by asking where your model will be deployed. Then consider your team's expertise and your training timeline to assess how much exploration you can afford.
+결정하려면 먼저 모델을 어디에 배포할지부터 따져 보세요. 그다음 팀의 전문성과 학습 일정을 고려해 탐색에 얼마나 여유를 둘 수 있는지 판단하세요.
 
 <HtmlEmbed frameless src="embeds/model-architecture-decision-flowchart.html"/>
 
 
 
-For SmolLM3, we wanted to build a strong small model for on-device deployment, we had roughly a three-month timeline, and we've mostly trained dense models in the past. This ruled out MoE (memory constraints) and hybrid (short timeline for exploration, dense models capable of supporting the target context length of 128k tokens) architectures, so we went for a dense Llama-style model.
+SmolLM3에서 우리는 온디바이스 배포용으로 강력한 소형 모델을 만들고 싶었고, 일정은 약 석 달이었으며, 지금까지 주로 밀집 모델을 학습해 왔습니다. 그래서 MoE(메모리 제약)와 하이브리드(탐색할 시간이 짧고, 목표 컨텍스트 길이인 128k 토큰은 밀집 모델로도 지원 가능) 아키텍처는 제외하고, Llama 스타일의 밀집 모델을 택했습니다.
 
-With the model architecture out of the way, let's now turn our attention to the tokenizer, which forms the bridge between the data and our model.
+모델 아키텍처를 정했으니 이제 데이터와 모델을 잇는 다리인 토크나이저로 관심을 돌려 보겠습니다.
 
-#### The Tokenizer
+#### 토크나이저
 
-The tokenization scheme is likely one of the most underrated components of any language model. Think of it as the translator between human language and the mathematical world the model lives in. Though architecture innovations tend to hog the spotlight, just like with any translator, the quality of the translation matters a lot. So how do we build or choose the right tokenizer for our needs?
+토큰화 방식은 아마 모든 언어 모델에서 가장 과소평가된 구성 요소 중 하나일 것입니다. 토크나이저를 사람의 언어와 모델이 사는 수학적 세계 사이의 번역가라고 생각해 보세요. 주목은 주로 아키텍처 혁신이 받지만, 어떤 번역가든 그렇듯 번역의 품질은 아주 중요합니다. 그렇다면 우리 요구에 맞는 토크나이저는 어떻게 만들거나 골라야 할까요?
 
- **Tokenizer Fundamentals** 
+ **토크나이저 기초**
 
-At its core, a tokenizer converts raw text into sequences of numbers that our model can process, by segmenting a running text into individual processable units called tokens. Before diving into the technical details, we should first answer some fundamental questions that will guide our tokenizer design:
+토크나이저는 본질적으로 원시 텍스트를 모델이 처리할 수 있는 숫자 시퀀스로 바꿉니다. 이어지는 텍스트를 토큰이라는 개별 처리 단위로 나누는 방식입니다. 기술적인 세부 사항을 살펴보기 전에, 토크나이저 설계의 방향을 잡아 줄 몇 가지 근본적인 질문에 먼저 답해야 합니다.
 
--  **What languages do we want to support?**  If we're building a multilingual model but our tokenizer has only seen English, the model will be inefficient when encountering non-English text, which will get split into many more tokens than necessary. This directly impacts performance, training cost, and inference speed.
--  **Which domains matter to us?**  Beyond languages, domains like math and code require careful representation of digits.
--  **What is our target data mixture?**  If we plan to train our tokenizer from scratch, ideally we should train it on a sample that mirrors our final training mixture. 
+-  **어떤 언어를 지원하려고 하나요?**  다국어 모델을 만들면서 토크나이저는 영어만 본 상태라면, 모델은 영어가 아닌 텍스트를 만났을 때 비효율적입니다. 그런 텍스트는 필요 이상으로 훨씬 많은 토큰으로 쪼개지기 때문입니다. 이는 성능, 학습 비용, 추론 속도에 직접 영향을 줍니다.
+-  **어떤 도메인이 중요한가요?**  언어 외에도 수학이나 코드 같은 도메인에서는 숫자를 신중하게 표현해야 합니다.
+-  **목표 데이터 혼합은 무엇인가요?**  토크나이저를 처음부터 학습할 계획이라면, 이상적으로는 최종 학습 데이터 혼합을 그대로 반영한 샘플로 학습해야 합니다.
 
-Once we've answered these questions, we can examine the main design decisions.
-
-<Sidenote>
-
-The ["Tokenization" section](https://github.com/huggingface/evaluation-guidebook/blob/main/contents/general-knowledge/tokenization.md) of our LLM Evaluation Guidebook provides an introduction to tokenizers and links to a number of useful resources. For a deep dive into tokenization fundamentals, Andrej Karpathy's ["Let's Build the GPT Tokenizer"](https://www.youtube.com/watch?v=zduSFxRajkE) is an excellent hands-on tutorial.
-</Sidenote>
-
- **Vocabulary Size** 
-
-The vocabulary is essentially a dictionary listing all the tokens (minimal text units, like words, subwords, or symbols) our model recognizes.
-
-Larger vocabularies typically compress text more efficiently since we generate fewer tokens per sentence, but there's a computational trade-off: The vocabulary size directly affects the size of our embedding matrices. If we have vocabulary size  *V*  and hidden dimension  *h* , the input embeddings have  *V*  ×  *h*  parameters, and the output layer has another  *V*  ×  *h*  parameters. For smaller models, this can amount to a significant chunk of the total parameters (as we saw in ["Embedding Sharing"](#embedding-sharing)), but the relative cost shrinks as models scale up. 
-
-The sweet spot depends on our target coverage and model size. For English-only models, around 50k tokens usually suffice, but multilingual models often need 100k+ to efficiently handle diverse writing systems and languages. Modern state-of-the-art models like Llama 3 have adopted vocabularies in the 128k+ range to improve token efficiency across diverse languages. Smaller models in the same family apply embedding sharing to reduce the percentage of embedding parameters while still benefiting from the larger vocabulary.
-
-@dagan2024gettingtokenizerpretrainingdomain analyze the impact of vocabulary size on compression, inference, and memory. They observe that compression gains from larger vocabularies decrease exponentially, suggesting an optimal size exists. For inference, larger models benefit from bigger vocabularies because compression saves more on the forward pass than the additional embedding tokens cost in softmax. For memory, the optimal size depends on sequence length and batch size: Longer contexts and large batches benefit from larger vocabularies due to KV cache savings from having fewer tokens.
+이 질문들에 답했다면 주요 설계 결정을 살펴볼 수 있습니다.
 
 <Sidenote>
 
-Set the vocabulary size to a multiple of 128 (e.g., 50,304 instead of 50,000) to optimize throughput. Modern GPUs perform matrix operations better when dimensions are divisible by higher powers of 2, as this ensures efficient memory alignment and reduces overhead from misaligned memory accesses. Horace He has written a useful [blog post](https://www.thonking.ai/p/what-shapes-do-matrix-multiplications) on this.
+우리의 LLM Evaluation Guidebook에 있는 ["Tokenization" 섹션](https://github.com/huggingface/evaluation-guidebook/blob/main/contents/general-knowledge/tokenization.md)은 토크나이저를 소개하고 유용한 자료 여러 개를 연결해 둡니다. 토큰화의 기초를 깊이 알고 싶다면 Andrej Karpathy의 ["Let's Build the GPT Tokenizer"](https://www.youtube.com/watch?v=zduSFxRajkE)가 훌륭한 실습 튜토리얼입니다.
 </Sidenote>
 
- **Tokenization**Algorithm** 
+ **어휘 크기**
 
-Now that we've seen the key parameters that define a tokenizer, we face a practical decision: Should we use an existing tokenizer or train one from scratch? The answer depends on coverage, or whether existing tokenizers with our target vocabulary size handle our languages and domains well.
+어휘는 모델이 인식하는 모든 토큰(단어, 하위 단어, 기호 같은 최소 텍스트 단위)을 나열한 사전이라고 할 수 있습니다.
 
-Among existing tokenizers, byte-pair encoding (BPE) [@sennrich2016neuralmachinetranslationrare] remains the most popular choice. Other algorithms exist, such as WordPiece and SentencePiece, but they are less widely adopted. (There's also growing research interest in tokenizer-free approaches that work directly on bytes or characters, potentially eliminating tokenization altogether.)
+어휘가 클수록 문장당 생성하는 토큰 수가 줄어들어 보통 텍스트를 더 효율적으로 압축합니다. 하지만 연산 측면의 트레이드오프가 있습니다. 어휘 크기는 임베딩 행렬의 크기에 직접 영향을 줍니다. 어휘 크기가  *V* 이고 은닉 차원이  *h* 이면 입력 임베딩의 파라미터는  *V*  ×  *h* 개이고, 출력 레이어에도  *V*  ×  *h* 개의 파라미터가 더 있습니다. 작은 모델에서는 이 파라미터가 전체 파라미터에서 상당한 비중을 차지할 수 있지만(["임베딩 공유"](#embedding-sharing)에서 보았듯이), 모델이 커질수록 상대적인 비용은 줄어듭니다.
 
-As for the question of coverage, consider the following figure, which compares how GPT-2's English-only BPE tokenizer [@gpt2] and Gemma 3's multilingual SentencePiece tokenizer [@gemma3] segment the same English and Arabic sentences.
+최적점은 목표 커버리지와 모델 크기에 따라 달라집니다. 영어 전용 모델에는 보통 50k 토큰 정도면 충분하지만, 다국어 모델은 다양한 문자 체계와 언어를 효율적으로 다루기 위해 100k 이상이 필요한 경우가 많습니다. Llama 3 같은 최신 최고 수준 모델은 다양한 언어에서 토큰 효율을 높이려고 128k 이상의 어휘를 채택했습니다. 같은 계열의 작은 모델은 임베딩 공유를 적용해, 큰 어휘의 이점은 그대로 누리면서 임베딩 파라미터의 비중을 줄입니다.
+
+@dagan2024gettingtokenizerpretrainingdomain 연구진은 어휘 크기가 압축, 추론, 메모리에 미치는 영향을 분석합니다. 어휘가 커질수록 압축 이득은 지수적으로 감소하며, 이는 최적의 크기가 존재함을 시사합니다. 추론 측면에서는 큰 모델일수록 큰 어휘의 이점을 봅니다. 압축 덕분에 순전파에서 절약하는 비용이 소프트맥스에서 추가 임베딩 토큰 때문에 드는 비용보다 크기 때문입니다. 메모리 측면에서 최적의 크기는 시퀀스 길이와 배치 크기에 따라 달라집니다. 컨텍스트가 길고 배치가 클수록 토큰 수가 줄어 KV 캐시를 절약할 수 있으므로 큰 어휘가 유리합니다.
+
+<Sidenote>
+
+처리량을 최적화하려면 어휘 크기를 128의 배수로 설정하세요(예를 들어 50,000 대신 50,304). 최신 GPU는 차원이 2의 높은 거듭제곱으로 나누어떨어질 때 행렬 연산을 더 잘 수행합니다. 메모리 정렬이 효율적으로 이루어지고, 정렬되지 않은 메모리 접근에서 생기는 오버헤드가 줄어들기 때문입니다. Horace He가 이 주제로 유용한 [블로그 글](https://www.thonking.ai/p/what-shapes-do-matrix-multiplications)을 썼습니다.
+</Sidenote>
+
+ **토큰화**알고리즘**
+
+토크나이저를 정의하는 핵심 파라미터를 살펴봤으니 이제 실제적인 결정을 내려야 합니다. 기존 토크나이저를 쓸까요, 아니면 처음부터 학습할까요? 답은 커버리지, 즉 목표 어휘 크기를 가진 기존 토크나이저가 우리가 다룰 언어와 도메인을 잘 처리하는지에 달려 있습니다.
+
+기존 토크나이저 중에서는 바이트 페어 인코딩(BPE) [@sennrich2016neuralmachinetranslationrare]이 여전히 가장 많이 쓰입니다. WordPiece나 SentencePiece 같은 다른 알고리즘도 있지만 덜 널리 채택되었습니다. (바이트나 문자를 직접 다뤄 토큰화 자체를 없앨 수도 있는 토크나이저 없는 접근 방식에 대한 연구 관심도 커지고 있습니다.)
+
+커버리지 문제와 관련해 다음 그림을 보세요. GPT-2의 영어 전용 BPE 토크나이저 [@gpt2]와 Gemma 3의 다국어 SentencePiece 토크나이저 [@gemma3]가 같은 영어 문장과 아랍어 문장을 어떻게 나누는지 비교합니다.
 
 <Wide>
 
@@ -1834,20 +1834,20 @@ As for the question of coverage, consider the following figure, which compares h
 
 
 
-While both tokenizers seem to perform similarly on English, the difference becomes striking for Arabic: GPT-2 breaks the text into over a hundred fragments, while Gemma 3 produces far fewer tokens thanks to its multilingual training data and larger, more inclusive vocabulary.
+두 토크나이저는 영어에서는 비슷하게 동작하는 것처럼 보이지만, 아랍어에서는 차이가 확연합니다. GPT-2는 텍스트를 백 개가 넘는 조각으로 쪼개는 반면, Gemma 3는 다국어 학습 데이터와 더 크고 포괄적인 어휘 덕분에 훨씬 적은 토큰을 만들어 냅니다.
 
-But to evaluate a tokenizer's quality, we can't just eyeball a few tokenization examples and call it good, the same way we can't make architecture changes based on intuition without running ablations. We need concrete metrics.
+하지만 토크나이저의 품질을 평가할 때 토큰화 예시 몇 개를 눈으로 보고 괜찮다고 판단할 수는 없습니다. 어블레이션을 돌리지 않고 직관만으로 아키텍처를 바꿀 수 없는 것과 마찬가지입니다. 구체적인 지표가 필요합니다.
 
- **Measuring Tokenizer Quality** 
+ **토크나이저 품질 측정하기**
 
-To evaluate how well a tokenizer performs, we can employ two key metrics used in FineWeb2 [@fineweb2]:
+토크나이저의 성능을 평가하기 위해 FineWeb2 [@fineweb2]에서 사용한 두 가지 핵심 지표를 쓸 수 있습니다.
 
--  **Fertility**  measures the average number of tokens needed to encode a word (the  *words-to-tokens ratio* ). Lower fertility means better compression, which translates to faster training and inference.
--  **Proportion of continued words**  tells us what percentage of words get split into multiple pieces. Lower percentages are better since it means fewer words get fragmented, leading to more efficient tokenization.
+-  **퍼틸리티(fertility)** 은 단어 하나를 인코딩하는 데 필요한 평균 토큰 수( *단어 대비 토큰 비율* )를 측정합니다. 퍼틸리티이 낮을수록 압축이 잘된다는 뜻이며, 학습과 추론이 빨라집니다.
+-  **이어지는 단어 비율(proportion of continued words)** 은 여러 조각으로 쪼개지는 단어가 몇 퍼센트인지 알려 줍니다. 쪼개지는 단어가 적을수록 토큰화가 효율적이므로 비율이 낮을수록 좋습니다.
 
-The fertility metric is defined around the concept of words because it provides meaningful cross-linguistic comparisons when appropriate word tokenizers are available, for example in [Spacy](https://spacy.io/) or [Stanza](https://stanfordnlp.github.io/stanza) [@fineweb2]. When comparing tokenizers for a single language, you can  use the number of characters or bytes instead of words to get the characters-to-tokens ratio or bytes-to-tokens ratio [@dagan2024gettingtokenizerpretrainingdomain]. However, these metrics have limitations for cross-linguistic comparison. Bytes can be skewed because characters in different scripts require different byte representations (e.g., Chinese characters use 3 bytes in UTF-8 while Latin characters use 1 or 2 bytes). Similarly, using the number of characters doesn't account for the fact that words vary dramatically in length across languages. For instance, Chinese words tend to be much shorter than German compound words. 
+퍼틸리티 지표를 단어 개념을 중심으로 정의하는 이유는, 적절한 단어 토크나이저(예를 들어 [Spacy](https://spacy.io/)나 [Stanza](https://stanfordnlp.github.io/stanza))가 있을 때 언어 간에 의미 있는 비교를 할 수 있기 때문입니다 [@fineweb2]. 한 언어 안에서 토크나이저를 비교할 때는 단어 대신 문자 수나 바이트 수를 써서 문자 대비 토큰 비율이나 바이트 대비 토큰 비율을 구할 수 있습니다 [@dagan2024gettingtokenizerpretrainingdomain]. 하지만 이 지표들은 언어 간 비교에 한계가 있습니다. 문자 체계마다 문자를 표현하는 데 필요한 바이트 수가 다르므로 바이트 기준은 왜곡될 수 있습니다(예를 들어 UTF-8에서 한자는 3바이트를 쓰지만 라틴 문자는 1바이트나 2바이트를 씁니다). 마찬가지로 문자 수를 쓰면 언어마다 단어 길이가 크게 다르다는 점이 반영되지 않습니다. 예를 들어 중국어 단어는 독일어 복합어보다 훨씬 짧은 경향이 있습니다.
 
-We can implement these metrics as follows:
+이 지표들은 다음과 같이 구현할 수 있습니다.
 
 ```python
 import numpy as np
@@ -1871,18 +1871,18 @@ def compute_tokenizer_metrics(tokenizer, word_tokenizer, text):
     
     return fertility, proportion_continued_words
 ```
-For specialized domains like code and math, though, besides fertility we need to dig deeper and look at how well the tokenizer handles domain-specific patterns. Most modern tokenizers do single-digit splitting, so "123" becomes ["1", "2", "3"] [@palm; @deepseekv2]. It might seem counterintuitive to break numbers apart, but it actually helps models learn arithmetic patterns more effectively. If "342792" is encoded as one indivisible token, the model must memorize what happens when you add, subtract, or multiply that specific token with every other number token, but when it's split, the model learns how digit-level operations work. Some tokenizers, like Llama 3's [@llama3], encode numbers from 1 to 999 as unique tokens, and the rest are composed of these tokens.
+하지만 코드나 수학 같은 특수 도메인에서는 퍼틸리티 외에도 토크나이저가 도메인 고유의 패턴을 얼마나 잘 처리하는지 더 깊이 살펴봐야 합니다. 최신 토크나이저는 대부분 숫자를 한 자리씩 나누므로 "123"은 ["1", "2", "3"]이 됩니다 [@palm; @deepseekv2]. 숫자를 쪼개는 것이 직관에 어긋나 보일 수 있지만, 실제로는 모델이 산술 패턴을 더 효과적으로 학습하는 데 도움이 됩니다. "342792"를 나눌 수 없는 하나의 토큰으로 인코딩하면, 모델은 그 토큰을 다른 모든 숫자 토큰과 더하거나 빼거나 곱할 때 어떤 결과가 나오는지 외워야 합니다. 반면 숫자를 쪼개면 모델은 자릿수 단위의 연산이 어떻게 동작하는지 배웁니다. Llama 3 [@llama3]처럼 1부터 999까지의 숫자를 고유한 토큰으로 인코딩하고, 나머지 숫자는 이 토큰들을 조합해 표현하는 토크나이저도 있습니다.
 
 <Sidenote>
 
-For a deeper dive, <a href="https://huggingface.co/spaces/huggingface/number-tokenization-blog" target="_blank">"From Digits to Decisions: How Tokenization Impacts Arithmetic in LLMs"</a> compares different tokenization schemes on math tasks.
+더 깊이 알고 싶다면 <a href="https://huggingface.co/spaces/huggingface/number-tokenization-blog" target="_blank">"From Digits to Decisions: How Tokenization Impacts Arithmetic in LLMs"</a>를 참고하세요. 수학 과제에서 여러 토큰화 방식을 비교합니다.
 </Sidenote>
 
- **Evaluating Tokenizers** 
+ **토크나이저 평가하기**
 
-To compare tokenizers across different languages, we'll use the setup from FineWeb2's tokenizer analysis [@fineweb2], using Wikipedia articles as our evaluation corpus. For each language, we'll sample 100 articles to get a meaningful sample while keeping computation manageable.
+여러 언어에서 토크나이저를 비교하기 위해 FineWeb2의 토크나이저 분석 [@fineweb2] 설정을 따르고, 평가 말뭉치로 위키백과 문서를 사용하겠습니다. 언어마다 문서 100개를 샘플링해, 연산량을 감당할 만한 수준으로 유지하면서 의미 있는 샘플을 얻습니다.
 
-First, let's install dependencies and define which tokenizers and languages we want to compare:
+먼저 의존성을 설치하고 비교할 토크나이저와 언어를 정의합니다.
 
 ```bash
 pip install transformers datasets sentencepiece 'datatrove[multilingual]'
@@ -1903,7 +1903,7 @@ languages = [
     ("Arabic", "arb_Arab", "ar"),
 ]
 ```
-Now let's load our Wikipedia samples. We use streaming to avoid downloading entire datasets:
+이제 위키백과 샘플을 불러오겠습니다. 데이터셋 전체를 내려받지 않도록 스트리밍을 사용합니다.
 
 ```python
 from datasets import load_dataset
@@ -1916,7 +1916,7 @@ for lang_name, lang_code, short_lang_code in languages:
   ds_iter = iter(wiki_ds)
   wikis[lang_code] = "\n".join([next(ds_iter)["text"] for _ in range(100)])
 ```
-With our data ready, we can now evaluate each tokenizer on each language. For each combination, we load the appropriate word tokenizer from [DataTrove](https://github.com/huggingface/datatrove) and compute both metrics:
+데이터가 준비되었으니 이제 각 토크나이저를 언어별로 평가할 수 있습니다. 조합마다 [DataTrove](https://github.com/huggingface/datatrove)에서 해당 언어에 맞는 단어 토크나이저를 불러와 두 지표를 모두 계산합니다.
 
 ```python
 from transformers import AutoTokenizer
@@ -1975,7 +1975,7 @@ print(df)
 26        Qwen3     Italian   1.883456  0.549402
 27        Qwen3      Arabic   2.255253  0.660318
 ```
-The results reveal some winners and trade-offs, depending on your priorities.
+결과를 보면 우선순위에 따라 앞서는 토크나이저와 트레이드오프가 드러납니다.
 
 <Wide>
 
@@ -1984,61 +1984,61 @@ The results reveal some winners and trade-offs, depending on your priorities.
 
 
 
-Gemma 3's tokenizer achieves low fertilities and word-splitting rates across multiple languages—notably English, French, and Spanish—which can be explained by its multilingual training data and very large vocabulary size (262k tokens, roughly 2× larger than Llama 3's 128k). Qwen3's tokenizer excels on Chinese but falls behind Llama 3's on English, French, and Spanish. Mistral Small's tokenizer [@mistralsmall] does best on Arabic but underperforms the others on English and Chinese.
+Gemma 3의 토크나이저는 여러 언어, 특히 영어·프랑스어·스페인어에서 퍼틸리티와 단어 분할 비율이 낮습니다. 다국어 학습 데이터와 매우 큰 어휘 크기(262k 토큰으로, Llama 3의 128k보다 약 2배 큼) 덕분이라고 설명할 수 있습니다. Qwen3의 토크나이저는 중국어에서 뛰어나지만 영어·프랑스어·스페인어에서는 Llama 3의 토크나이저에 뒤처집니다. Mistral Small의 토크나이저 [@mistralsmall]는 아랍어에서 가장 좋지만 영어와 중국어에서는 다른 토크나이저보다 성능이 낮습니다.
 
- **Choosing Between Existing and Custom Tokenizers** 
+ **기존 토크나이저와 직접 만든 토크나이저 중 고르기**
 
-Currently, there's a good selection of strong tokenizers available. Many recent models start with something like GPT-4's tokenizer [@gpt4] and augment it with additional multilingual tokens. Llama 3's tokenizer performs well on average across multilingual text and code, while Qwen2.5's excels particularly on Chinese and some low-resource languages. How do you decide whether to use one of the available options or train your own? Here are a few guidelines to help you choose:
+현재는 쓸 만한 강력한 토크나이저가 많습니다. 최근 모델 상당수는 GPT-4의 토크나이저 [@gpt4] 같은 것에서 출발해 다국어 토큰을 추가합니다. Llama 3의 토크나이저는 다국어 텍스트와 코드 전반에서 평균적으로 좋은 성능을 보이고, Qwen2.5의 토크나이저는 특히 중국어와 일부 저자원 언어에서 뛰어납니다. 이미 나와 있는 토크나이저 중 하나를 쓸지, 직접 학습할지는 어떻게 정할까요? 선택에 도움이 될 몇 가지 지침은 다음과 같습니다.
 
--  **When to use existing tokenizers:**  If your target use case matches the language or domain coverage of the tokenizers compared above, these are solid choices that have been battle-tested. For SmolLM3 training, we chose Llama 3's tokenizer: It offers competitive tokenization quality on our target languages (English, French, Spanish, Portuguese, German, and Italian) with a modest vocabulary size that made sense for our small model size. For larger models where embeddings are a smaller fraction of total parameters, Gemma3's efficiency gains become more attractive.
--  **When to train your own:**  If you're training for low-resource languages or have a unique data mixture, you'll likely need to train your own tokenizer to ensure good coverage. In this case, it's important that you train the tokenizer on a dataset close to what you believe the final training mixture will look like. This creates a bit of a chicken-and-egg problem, since you need a tokenizer to run data ablations and find the right mixture, but you can retrain the tokenizer before launching the final run and verify that downstream performance improves and fertilities are still good.
+-  **기존 토크나이저를 쓸 때:**  목표 사용 사례가 위에서 비교한 토크나이저의 언어·도메인 커버리지와 맞는다면, 이 토크나이저들은 충분히 검증된 탄탄한 선택지입니다. SmolLM3 학습에는 Llama 3의 토크나이저를 골랐습니다. 목표 언어(영어, 프랑스어, 스페인어, 포르투갈어, 독일어, 이탈리아어)에서 경쟁력 있는 토큰화 품질을 내면서도, 어휘 크기가 적당해 우리의 작은 모델 크기에 잘 맞았기 때문입니다. 임베딩이 전체 파라미터에서 차지하는 비중이 작은 더 큰 모델이라면 Gemma3의 효율 이점이 더 매력적입니다.
+-  **직접 학습할 때:**  저자원 언어용으로 학습하거나 고유한 데이터 혼합을 쓴다면, 커버리지를 충분히 확보하기 위해 토크나이저를 직접 학습해야 할 가능성이 큽니다. 이때는 최종 학습 데이터 혼합과 비슷할 것으로 예상하는 데이터셋으로 토크나이저를 학습하는 것이 중요합니다. 그러면 닭이 먼저냐 달걀이 먼저냐 하는 문제가 조금 생깁니다. 데이터 어블레이션을 돌려 적절한 혼합을 찾으려면 토크나이저가 필요하기 때문입니다. 하지만 최종 학습을 시작하기 전에 토크나이저를 다시 학습하고, 후속 과제 성능이 개선되며 퍼틸리티도 여전히 좋은지 확인하면 됩니다.
 
-Your choice of tokenizer might seem like a technical detail, but it ripples through every aspect of your model's performance. Don't be afraid to invest time in getting it right.
+토크나이저 선택은 사소한 기술적 세부 사항처럼 보일 수 있지만, 모델 성능의 모든 측면에 영향을 줍니다. 제대로 고르는 데 시간을 들이는 것을 두려워하지 마세요.
 
 #### SmolLM3
 
-Now that we've explored the architectural landscape and run some ablations, let's see how this all comes together in practice for a model like SmolLM3.
+지금까지 아키텍처의 전반적인 선택지를 살펴보고 몇 가지 어블레이션도 돌려 봤으니, 이 모든 내용이 SmolLM3 같은 모델에서 실제로 어떻게 합쳐지는지 보겠습니다.
 
-The SmolLM family is about pushing the boundaries of what's possible with small models. SmolLM2 delivered three capable models at 135M, 360M, and 1.7B parameters, all designed to run efficiently on-device. For SmolLM3, we wanted to scale up performance while staying small enough for phones, and tackle SmolLM2's weak spots: multilinguality, very long context handling, and strong reasoning capabilities. We chose 3B parameters as the sweet spot for this balance.
+SmolLM 계열은 작은 모델로 할 수 있는 일의 한계를 넓히는 것을 목표로 합니다. SmolLM2는 135M, 360M, 1.7B 파라미터의 쓸 만한 모델 세 개를 내놓았으며, 모두 온디바이스에서 효율적으로 동작하도록 설계했습니다. SmolLM3에서는 휴대폰에서 돌릴 수 있을 만큼 작은 크기를 유지하면서 성능을 끌어올리고, SmolLM2의 약점인 다국어 능력, 매우 긴 컨텍스트 처리, 강한 추론 능력을 보완하고 싶었습니다. 이 균형을 맞추는 최적점으로 3B 파라미터를 택했습니다.
 
-Since we were scaling up a proven recipe, we naturally gravitated toward dense transformers. MoE wasn't implemented in Nanotron yet, and we already had the expertise and infrastructure for training strong small dense models. More importantly, for edge device deployment we're memory-bound; an MoE with many parameters, even if only a few are active, would be limiting since we would still need to load all the experts into memory, making dense models the more practical choice.
+검증된 레시피를 확장하는 작업이었으므로 자연스럽게 밀집 트랜스포머를 택했습니다. Nanotron에는 아직 MoE가 구현되어 있지 않았고, 우리에게는 강력한 소형 밀집 모델을 학습할 전문성과 인프라가 이미 있었습니다. 더 중요한 점은 엣지 기기에 배포할 때는 메모리가 병목이라는 것입니다. 파라미터가 많은 MoE는 일부만 활성화되더라도 모든 전문가를 메모리에 올려야 하므로 제약이 됩니다. 그래서 밀집 모델이 더 실용적인 선택이었습니다.
 
-We started with SmolLM2 1.7B's architecture as our foundation, then trained a 3B ablation model on 100B tokens using the Qwen2.5-3B layout. This gave us a solid baseline to test each modification individually. Each architecture change needed to either improve the loss and downstream performance on English benchmarks or provide measurable benefits, like inference speed, without quality degradation.
+SmolLM2 1.7B의 아키텍처를 토대로 삼고, Qwen2.5-3B의 레이아웃을 사용해 3B 어블레이션 모델을 100B 토큰으로 학습했습니다. 덕분에 각 수정 사항을 하나씩 시험할 탄탄한 베이스라인을 확보했습니다. 각 아키텍처 변경은 영어 벤치마크에서 손실과 후속 과제 성능을 개선하거나, 품질 저하 없이 추론 속도 같은 측정 가능한 이점을 제공해야 했습니다.
 
-Here's what we tested before launching the run that made the cut:
+최종 학습을 시작하기 전에 시험해서 채택된 항목은 다음과 같습니다.
 
--  **Tokenizer:** Before diving into architecture modifications, we needed to choose a tokenizer. We found a good set of candidates that covered our target languages and domains. Based on our fertility analysis, Llama 3.2's tokenizer gave us the best trade-off between performance for our six target languages while keeping the vocabulary at 128k—large enough for multilingual efficiency but not so large that it bloated our 3B parameter count with embedding weights.
--  **Grouped query attention:**  We reconfirmed our earlier finding that GQA with four groups matches MHA's performance, but this time at 3B scale with 100B tokens. The KV cache efficiency gains were too good to pass up, especially for on-device deployment where memory is precious.
--  **NoPE for long context:**  We implemented a hybrid positional encoding scheme, with NoPE applied every fourth layer and RoPE used in the remaining layers. Our 3B ablation confirmed our previous findings: NoPE improved long context handling without sacrificing short context performance. 
--  **Intra-document attention masking:**  We prevented cross-document attention during training to help with training speed and stability when training on very large sequences. Again, we found that this didn't impact downstream performance.
--  **Model layout optimization:**  We compared layouts from recent 3B models in the literature, some prioritizing depth, others width. We tested Qwen2.5-3B (3.1B), Llama 3.2-3B (3.2B), and Falcon3-H1-3B (3.1B) layouts on our training setup, where depth and width varied. The results were interesting: All layouts achieved nearly identical loss and downstream performance, despite Qwen2.5-3B actually having fewer parameters, but Qwen2.5-3B's deeper architecture aligned with research showing that network depth benefits generalization [@petty2024impactdepthcompositionalgeneralization]. Therefore, we went with the deeper layout, betting it would help as training progressed.
--  **Stability improvements:**  We kept tied embeddings from SmolLM2 but added a new trick inspired by OLMo 2, removing weight decay from embeddings. Our ablations showed this didn't hurt performance while lowering embedding norms, which can help prevent training divergence.
+-  **토크나이저:** 아키텍처 수정에 들어가기 전에 토크나이저부터 골라야 했습니다. 목표 언어와 도메인을 다루는 좋은 후보들을 찾았습니다. 퍼틸리티 분석 결과, Llama 3.2의 토크나이저가 여섯 개 목표 언어에서 가장 좋은 성능 균형을 보이면서도 어휘를 128k로 유지했습니다. 다국어 효율을 얻기에 충분히 크면서도 임베딩 가중치 때문에 3B 파라미터 수가 불어날 만큼 크지는 않은 크기입니다.
+-  **그룹 쿼리 어텐션:**  그룹이 네 개인 GQA가 MHA와 같은 성능을 낸다는 이전 결과를 이번에는 3B 규모와 100B 토큰에서 다시 확인했습니다. KV 캐시 효율 향상은 놓치기 아까울 만큼 컸으며, 메모리가 귀한 온디바이스 배포에서는 더욱 그랬습니다.
+-  **긴 컨텍스트를 위한 NoPE:**  네 번째 레이어마다 NoPE를 적용하고 나머지 레이어에는 RoPE를 사용하는 하이브리드 위치 인코딩 방식을 구현했습니다. 3B 어블레이션에서도 이전 결과가 확인되었습니다. NoPE는 짧은 컨텍스트 성능을 희생하지 않고 긴 컨텍스트 처리를 개선했습니다.
+-  **문서 내 어텐션 마스킹:**  매우 긴 시퀀스로 학습할 때 학습 속도와 안정성을 높이기 위해 학습 중 문서 간 어텐션을 막았습니다. 이번에도 이 설정이 후속 과제 성능에는 영향을 주지 않는다는 것을 확인했습니다.
+-  **모델 레이아웃 최적화:**  최근 문헌에 나온 3B 모델들의 레이아웃을 비교했습니다. 일부는 깊이를, 일부는 너비를 우선합니다. 깊이와 너비가 서로 다른 Qwen2.5-3B(3.1B), Llama 3.2-3B(3.2B), Falcon3-H1-3B(3.1B) 레이아웃을 우리 학습 설정에서 시험했습니다. 결과는 흥미로웠습니다. Qwen2.5-3B는 실제로 파라미터가 더 적은데도 모든 레이아웃이 거의 같은 손실과 후속 과제 성능을 냈습니다. 다만 Qwen2.5-3B의 더 깊은 아키텍처는 네트워크 깊이가 일반화에 도움이 된다는 연구 결과 [@petty2024impactdepthcompositionalgeneralization]와 맞아떨어졌습니다. 그래서 학습이 진행될수록 도움이 되리라 보고 더 깊은 레이아웃을 택했습니다.
+-  **안정성 개선:**  SmolLM2의 임베딩 공유는 유지하되, OLMo 2에서 착안한 새로운 기법을 추가해 임베딩에서 가중치 감쇠(weight decay)를 제거했습니다. 어블레이션 결과 이 기법은 성능을 해치지 않으면서 임베딩 노름을 낮췄으며, 이는 학습 발산을 막는 데 도움이 될 수 있습니다.
 
-The beauty of the systematic ablations approach is that we could confidently combine all these modifications, knowing each had been validated.
+체계적인 어블레이션 방식의 장점은 각 수정 사항이 검증되었다는 것을 알기에 이 모든 수정을 자신 있게 결합할 수 있다는 점입니다.
 
-<Note title="Combining changes in ablations" emoji="💡" variant="info">
+<Note title="어블레이션에서 변경 사항 결합하기" emoji="💡" variant="info">
 
-In practice, we test changes incrementally: Once a feature is validated, it becomes part of the baseline for testing the next feature. Testing order matters. Start with the battle-tested features first (tied embeddings → GQA → document masking → NoPE → remove weight decay).
+실제로는 변경 사항을 점진적으로 시험합니다. 어떤 기능이 검증되면 그 기능은 다음 기능을 시험할 베이스라인의 일부가 됩니다. 시험 순서가 중요합니다. 충분히 검증된 기능부터 시작하세요(임베딩 공유 → GQA → 문서 마스킹 → NoPE → 가중치 감쇠 제거).
 </Note>
 
-#### Rules of Engagement
+#### 실전 원칙
 
 <Quote>
 
-TL;DR: Your use case drives your choices.
+TL;DR: 사용 사례가 선택을 결정합니다.
 </Quote>
 
- **Let your deployment target guide architectural decisions.**  Consider how and where your model will actually run when evaluating new architectural innovations.
+ **배포 대상에 맞춰 아키텍처를 결정하세요.**  새로운 아키텍처 혁신을 평가할 때는 모델이 실제로 어떻게, 어디에서 실행될지 고려하세요.
 
- **Strike the right balance between innovation and pragmatism.**  We can't afford to ignore major architectural advances—using MHA when better alternatives (like GQA) exist would be a poor technical choice. Stay informed about the latest research and adopt techniques that offer clear, validated benefits at scale. But resist the temptation to chase every new paper that promises marginal gains (unless you have the resources to do so or your goal is architecture research).
+ **혁신과 실용성 사이에서 균형을 잡으세요.**  주요 아키텍처 발전을 무시할 수는 없습니다. 더 나은 대안(GQA 등)이 있는데도 MHA를 쓰는 것은 기술적으로 좋지 않은 선택입니다. 최신 연구를 꾸준히 따라가고, 대규모에서 분명하게 검증된 이점이 있는 기법을 도입하세요. 하지만 미미한 개선을 약속하는 새 논문을 모두 쫓아가고 싶은 유혹은 참으세요(그럴 자원이 있거나 아키텍처 연구가 목표라면 예외입니다).
 
- **Systematic beats intuitive.**  Validate every architecture change, no matter how promising it looks on paper. Test modifications individually before combining them to understand their impact.
+ **직관보다 체계가 낫습니다.**  논문에서 아무리 유망해 보여도 모든 아키텍처 변경을 검증하세요. 수정 사항의 영향을 이해하려면 결합하기 전에 하나씩 시험하세요.
 
- **Scale effects are real—re-ablate at target size when possible.**  Don't assume your small-scale ablations will hold perfectly at your target model size. If you have the compute, try to reconfirm them.
+ **규모 효과는 실재합니다. 가능하면 목표 크기에서 다시 어블레이션하세요.**  작은 규모의 어블레이션 결과가 목표 모델 크기에서도 완벽하게 유지되리라고 가정하지 마세요. 연산 자원이 있다면 결과를 다시 확인해 보세요.
 
- **Validate tokenizer efficiency on your actual domains.**  Fertility metrics across your target languages and domains matter more than following what the latest model used. A 50k English tokenizer won't cut it for serious multilingual work, but you don't need a 256k vocabulary either if you're not covering that many languages.
+ **실제 도메인에서 토크나이저 효율을 검증하세요.**  최신 모델이 쓴 것을 따르는 것보다 목표 언어와 도메인 전반의 퍼틸리티 지표가 더 중요합니다. 50k 크기의 영어 토크나이저로는 본격적인 다국어 작업을 감당할 수 없지만, 다루는 언어가 그리 많지 않다면 256k 어휘까지 필요하지도 않습니다.
 
-Now that the model architecture is decided, it's time to tackle the optimizer and hyperparameters that will drive the learning process.
+모델 아키텍처를 정했으니 이제 학습 과정을 이끌 옵티마이저와 하이퍼파라미터를 다룰 차례입니다.
 
 $$
 

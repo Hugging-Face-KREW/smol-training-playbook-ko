@@ -258,11 +258,11 @@
             </div>
             <div class="tokenizer-content">
             <div class="language-section">
-              <div class="language-name">English</div>
-              <div class="text-label">Text</div>
+              <div class="language-name">영어</div>
+              <div class="text-label">텍스트</div>
               <div class="sentence-text" id="gpt2EnglishText">${sampleData.english_text}</div>
               <div class="tokens-header">
-                <div class="tokens-label">Tokens</div>
+                <div class="tokens-label">토큰</div>
                 <div class="token-count" id="gpt2EnglishTokenCount">20</div>
               </div>
               <div class="token-grid" id="gpt2EnglishTokens"></div>
@@ -270,11 +270,11 @@
             </div>
             
             <div class="language-section">
-              <div class="language-name">Arabic</div>
-              <div class="text-label">Text</div>
+              <div class="language-name">아랍어</div>
+              <div class="text-label">텍스트</div>
               <div class="sentence-text arabic-text" id="gpt2ArabicText">${sampleData.arabic_text}</div>
               <div class="tokens-header">
-                <div class="tokens-label">Tokens</div>
+                <div class="tokens-label">토큰</div>
                 <div class="token-count" id="gpt2ArabicTokenCount">122</div>
               </div>
               <div class="token-grid" id="gpt2ArabicTokens"></div>
@@ -289,11 +289,11 @@
             </div>
             <div class="tokenizer-content">
             <div class="language-section">
-              <div class="language-name">English</div>
-              <div class="text-label">Text</div>
+              <div class="language-name">영어</div>
+              <div class="text-label">텍스트</div>
               <div class="sentence-text" id="gemmaEnglishText">${sampleData.english_text}</div>
               <div class="tokens-header">
-                <div class="tokens-label">Tokens</div>
+                <div class="tokens-label">토큰</div>
                 <div class="token-count" id="gemmaEnglishTokenCount">19</div>
               </div>
               <div class="token-grid" id="gemmaEnglishTokens"></div>
@@ -301,11 +301,11 @@
             </div>
             
             <div class="language-section">
-              <div class="language-name">Arabic</div>
-              <div class="text-label">Text</div>
+              <div class="language-name">아랍어</div>
+              <div class="text-label">텍스트</div>
               <div class="sentence-text arabic-text" id="gemmaArabicText">${sampleData.arabic_text}</div>
               <div class="tokens-header">
-                <div class="tokens-label">Tokens</div>
+                <div class="tokens-label">토큰</div>
                 <div class="token-count" id="gemmaArabicTokenCount">44</div>
               </div>
               <div class="token-grid" id="gemmaArabicTokens"></div>
@@ -355,7 +355,7 @@
           const borderStyle = isArabic ? '2px solid #27ae60' : '1px solid rgba(255,255,255,0.2)';
           return `
             <div class="token" style="background-color: ${color}; border: ${borderStyle};" 
-                 title="Token: ${token} | ID: ${tokenIds[index]}">
+                 title="토큰: ${token} | ID: ${tokenIds[index]}">
               ${token}
               <div class="token-id">${tokenIds[index]}</div>
             </div>

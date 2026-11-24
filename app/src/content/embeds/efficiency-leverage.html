@@ -309,7 +309,7 @@
                 headerDiv.className = 'efficiency-leverage-chart__header';
                 headerDiv.innerHTML = `
           <div class="legend-bottom">
-            <div class="legend-title">Loss Scaling Curve</div>
+            <div class="legend-title">손실 스케일링 곡선</div>
             <div class="items">
               <span class="item">
                 <span class="swatch" style="background: ${denseColor}"></span>
@@ -405,7 +405,7 @@
                     .attr('x', -innerHeight / 2)
                     .attr('y', -45)
                     .attr('text-anchor', 'middle')
-                    .text('Loss');
+                    .text('손실');
 
                 // Ligne de référence à 1.6
                 g.append('line')
@@ -520,7 +520,7 @@
                 // Titre
                 const titleDiv = document.createElement('div');
                 titleDiv.className = 'chart-title';
-                titleDiv.textContent = 'Definition of Efficiency Leverage (EL)';
+                titleDiv.textContent = '효율 레버리지(EL)의 정의';
                 container.appendChild(titleDiv);
             }
 

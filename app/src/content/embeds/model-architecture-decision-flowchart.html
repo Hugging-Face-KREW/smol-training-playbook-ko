@@ -143,21 +143,21 @@
 
             // Define the flowchart structure - Model Architecture Decision
             const nodes = [
-                { id: 'A', label: 'Where will this model run?', type: 'question', x: 400, y: 100 },
-                { id: 'B', label: 'Edge/phones\nMemory-constrained environments', type: 'decision', x: 180, y: 320 },
-                { id: 'C', label: 'Other\nMore memory available', type: 'decision', x: 620, y: 320 },
-                { id: 'D', label: 'Dense (most cases)\nHybrid (for experienced teams)', type: 'success', x: 180, y: 540 },
-                { id: 'E', label: 'What\'s your team\'s expertise?', type: 'question', x: 620, y: 540 },
-                { id: 'F', label: 'First LLM training', type: 'decision', x: 380, y: 760 },
-                { id: 'G', label: 'Experienced\nComfortable with dense', type: 'decision', x: 620, y: 760 },
-                { id: 'H', label: 'Very experienced', type: 'decision', x: 860, y: 760 },
-                { id: 'I', label: 'Dense\n(Focus on basics)', type: 'success', x: 380, y: 980 },
-                { id: 'J', label: 'What\'s your timeline?', type: 'question', x: 620, y: 980 },
-                { id: 'K', label: 'Tight\nProven path required', type: 'decision', x: 480, y: 1200 },
-                { id: 'L', label: 'Flexible\nOpen to exploration', type: 'decision', x: 760, y: 1200 },
-                { id: 'M', label: 'Dense', type: 'success', x: 480, y: 1420 },
-                { id: 'N', label: 'MoE or MoE + Hybrid:\nbetter perf/compute', type: 'category', x: 760, y: 1420 },
-                { id: 'O', label: 'MoE or MoE + Hybrid:\nbetter perf/compute', type: 'category', x: 860, y: 980 }
+                { id: 'A', label: '이 모델을 어디에서 실행하나요?', type: 'question', x: 400, y: 100 },
+                { id: 'B', label: '엣지 기기/휴대폰\n메모리 제약 환경', type: 'decision', x: 180, y: 320 },
+                { id: 'C', label: '그 밖의 환경\n메모리 여유 있음', type: 'decision', x: 620, y: 320 },
+                { id: 'D', label: '밀집 모델(대부분의 경우)\n하이브리드(경험 많은 팀)', type: 'success', x: 180, y: 540 },
+                { id: 'E', label: '팀의 전문성은 어느 정도인가요?', type: 'question', x: 620, y: 540 },
+                { id: 'F', label: '첫 LLM 학습', type: 'decision', x: 380, y: 760 },
+                { id: 'G', label: '경험 있음\n밀집 모델에 익숙함', type: 'decision', x: 620, y: 760 },
+                { id: 'H', label: '경험이 매우 많음', type: 'decision', x: 860, y: 760 },
+                { id: 'I', label: '밀집 모델\n(기본에 집중)', type: 'success', x: 380, y: 980 },
+                { id: 'J', label: '일정은 어떤가요?', type: 'question', x: 620, y: 980 },
+                { id: 'K', label: '빠듯함\n검증된 방법 필요', type: 'decision', x: 480, y: 1200 },
+                { id: 'L', label: '여유 있음\n탐색 가능', type: 'decision', x: 760, y: 1200 },
+                { id: 'M', label: '밀집 모델', type: 'success', x: 480, y: 1420 },
+                { id: 'N', label: 'MoE 또는 MoE + 하이브리드\n연산량 대비 성능 우수', type: 'category', x: 760, y: 1420 },
+                { id: 'O', label: 'MoE 또는 MoE + 하이브리드\n연산량 대비 성능 우수', type: 'category', x: 860, y: 980 }
             ];
 
             const links = [

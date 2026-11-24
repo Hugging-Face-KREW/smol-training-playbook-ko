@@ -52,14 +52,14 @@
 
     <div class="tables-container">
         <div class="table-wrapper">
-            <h5 class="metric-title">Fertility (tokens per word)</h5>
-            <label class="subtitle">Lower is better</label>
+            <h5 class="metric-title">퍼틸리티(단어당 토큰 수)</h5>
+            <label class="subtitle">낮을수록 좋음</label>
             <table id="fertility-table"></table>
         </div>
 
         <div class="table-wrapper">
-            <h5 class="metric-title">Proportion of Continued Words (%)</h5>
-            <label class="subtitle">Lower is better</label>
+            <h5 class="metric-title">이어지는 단어 비율(%)</h5>
+            <label class="subtitle">낮을수록 좋음</label>
             <table id="pcw-table"></table>
         </div>
     </div>
@@ -93,14 +93,15 @@
 
         const tokenizers = ["Llama3", "Mistral Small", "Qwen3", "Gemma3"];
         const languages = ["English", "Chinese", "French", "Arabic"];
+        const languageLabels = { "English": "영어", "Chinese": "중국어", "French": "프랑스어", "Arabic": "아랍어" };
 
         function createTable(tableId, metric) {
             const table = document.getElementById(tableId);
 
             // Create header
-            let headerHTML = '<thead><tr><th>Tokenizer (Vocab Size)</th>';
+            let headerHTML = '<thead><tr><th>토크나이저(어휘 크기)</th>';
             languages.forEach(lang => {
-                headerHTML += `<th>${lang}</th>`;
+                headerHTML += `<th>${languageLabels[lang] || lang}</th>`;
             });
             headerHTML += '</tr></thead><tbody>';
 
