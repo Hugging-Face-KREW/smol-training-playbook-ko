@@ -5,17 +5,17 @@ Smol·Ultra Playbook 번역에서 쓰는 용어 표기입니다. **현재는 초
 ## 쓰는 방법
 
 1. 이 용어집에 있는 용어는 여기 적힌 표기를 따릅니다.
-2. 없는 용어는 [terms.kr](https://terms.kr/)에서 찾습니다. AI 번역 도구에서는 `python3 .agents/skills/playbook-translate/scripts/lookup_terms.py 용어`로 조회할 수 있습니다. terms.kr는 PoC 단계이고 수록 데이터는 AI가 만든 초안이므로, 이 용어집과 다르면 이 용어집을 따릅니다.
-3. 둘 다 없으면 [용어 판단 기준](../.agents/skills/playbook-translate/references/terms.md)으로 정하고, PR 본문의 “검토가 필요한 표현”에 `영어 → 선택한 번역 (근거)` 형식으로 적습니다. 리뷰에서 확정되면 이 파일에 추가합니다.
+2. 없는 용어는 [용어 판단 기준](../.agents/skills/playbook-translate/references/terms.md)에 따라 표기를 제안하고, PR 본문의 “검토가 필요한 표현”에 `영어 → 선택한 번역 (근거)` 형식으로 적습니다.
+3. 리뷰에서 표기가 확정되면 이 용어집에 추가합니다.
 
 공통 원칙은 아래와 같습니다.
 
 - 한 번 정한 표기는 문서 전체에서 통일합니다.
-- 약어는 첫 등장에 “한국어(약어)”로 쓰고 이후에는 약어를 씁니다. 예: 텐서 병렬화(TP) → TP
+- 약어의 첫 등장 표기는 [괄호와 약어 기준](../.agents/skills/playbook-translate/references/terms.md#괄호와-약어)을 따릅니다.
 - “~ 학습”은 띄어 씁니다. 사전 학습, 중간 학습, 사후 학습, 강화 학습
 - 고유명사, 라이브러리, 논문 원제, API 이름은 영어 그대로 둡니다. 예: PyTorch, Nanotron, SmolLM3, ZeRO, FSDP, AdamW, `torch.compile`
 
-“근거” 열의 `terms.kr`은 terms.kr 표기를 따른 것이고, `제안`은 terms.kr에 없거나 terms.kr와 다르게 정한 것입니다. `제안` 항목을 중점적으로 리뷰해 주세요.
+“근거” 열의 `terms.kr`은 기존 표기의 출처입니다. `팀 표기`는 이 프로젝트에서 정한 표기이며, `제안`은 리뷰에서 검토할 표기입니다.
 
 ## 학습 일반
 
@@ -33,11 +33,18 @@ Smol·Ultra Playbook 번역에서 쓰는 용어 표기입니다. **현재는 초
 | hyperparameter | 하이퍼파라미터 | terms.kr | |
 | checkpoint | 체크포인트 | terms.kr | |
 | batch size | 배치 크기 | 제안 | |
+| dataset | 데이터셋 | 팀 표기 | |
 | tokenizer | 토크나이저 | terms.kr | |
+| prompt | 프롬프트 | 팀 표기 | |
+| sequence | 시퀀스 | 팀 표기 | |
+| packing | 패킹 | 팀 표기 | |
 | context length | 컨텍스트 길이 | 제안 | |
+| context window | 컨텍스트 윈도우 | 팀 표기 | |
 | benchmark | 벤치마크 | terms.kr | |
 | baseline | 베이스라인 | 제안 | terms.kr는 “기준선”입니다. 실험 비교 대상이라는 뜻에는 “베이스라인”이 더 널리 쓰입니다. |
 | evaluation | 평가 | 제안 | |
+| downstream evaluation | 다운스트림 평가 | 팀 표기 | |
+| overfitting | 오버피팅 | 팀 표기 | |
 | inference | 추론 | terms.kr | |
 | throughput | 처리량 | 제안 | |
 | latency | 지연 시간 | 제안 | |
@@ -52,13 +59,25 @@ Smol·Ultra Playbook 번역에서 쓰는 용어 표기입니다. **현재는 초
 | pre-training, pretraining | 사전 학습 | terms.kr | terms.kr는 “사전학습”이지만 띄어쓰기 원칙에 따라 띄어 씁니다. |
 | mid-training | 중간 학습(mid-training) | 제안 | |
 | post-training | 사후 학습 | terms.kr | |
+| fine-tuning | 파인튜닝 | 팀 표기 | |
 | reinforcement learning | 강화 학습(RL) | terms.kr | 띄어쓰기 원칙에 따라 띄어 씁니다. |
 | preference optimization | 선호 최적화 | 제안 | |
+| Direct Preference Optimization (DPO) | Direct Preference Optimization(이하 DPO) | 팀 표기 | 이후 DPO로 씁니다. |
+| data curation | 데이터 큐레이션 | 팀 표기 | |
 | data mixture | 데이터 혼합 | 제안 | 비율을 뜻하면 “데이터 혼합 비율”로 씁니다. |
+| architecture | 아키텍처 | 팀 표기 | |
+| transformer | 트랜스포머 | 팀 표기 | |
+| parameter | 파라미터 | 팀 표기 | |
+| layer | 레이어 | 팀 표기 | |
 | attention | 어텐션 | terms.kr | |
+| KV cache | KV 캐시 | 팀 표기 | |
+| masking | 마스킹 | 팀 표기 | |
 | embedding | 임베딩 | terms.kr | |
-| mixture of experts | 전문가 혼합(MoE) | terms.kr | |
-| expert | 전문가 | 제안 | MoE 문맥에서 씁니다. |
+| logit | 로짓 | 팀 표기 | |
+| softmax | 소프트맥스 | 팀 표기 | |
+| mixture of experts (MoE) | MoE | 팀 표기 | 첫 등장부터 MoE로 씁니다. |
+| expert | Expert | 팀 표기 | MoE 문맥에서 씁니다. |
+| shared expert | 공유 Expert | 팀 표기 | |
 | router | 라우터 | 제안 | |
 
 ## 분산 학습과 인프라
@@ -92,5 +111,4 @@ Smol·Ultra Playbook 번역에서 쓰는 용어 표기입니다. **현재는 초
 | 영어 | 후보 | 비고 |
 | --- | --- | --- |
 | ablation | 어블레이션, 절제 실험, 제거 실험 | terms.kr에 없습니다. Smol 전체에 자주 나옵니다. |
-| fine-tuning | 미세 조정, 파인튜닝 | terms.kr는 “미세조정”이고 “파인튜닝”은 유의어입니다. |
-| supervised fine-tuning (SFT) | 지도 미세 조정(SFT), SFT | fine-tuning 결정에 따릅니다. |
+| supervised fine-tuning (SFT) | 지도 파인튜닝(SFT), SFT | |
