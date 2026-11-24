@@ -93,6 +93,11 @@ function slugify(text: string): string {
 
 const pdfBase = titleRaw ? stripHtml(titleRaw) : stripHtml(title);
 const pdfFilename = `${slugify(pdfBase)}.pdf`;
+const publishedDate = published ? new Date(published) : undefined;
+const publishedLabel =
+  publishedDate && !Number.isNaN(publishedDate.getTime())
+    ? new Intl.DateTimeFormat("ko-KR", { dateStyle: "long" }).format(publishedDate)
+    : published;
 ---
 
 <section class="hero">
@@ -103,12 +108,12 @@ const pdfFilename = `${slugify(pdfBase)}.pdf`;
   </div>
 </section>
 
-<header class="meta" aria-label="Article meta information">
+<header class="meta" aria-label="글 정보">
   <div class="meta-container">
     {
       normalizedAuthors.length > 0 && (
         <div class="meta-container-cell">
-          <h3>Author{normalizedAuthors.length > 1 ? "s" : ""}</h3>
+          <h3>저자</h3>
           <ul class="authors">
             {normalizedAuthors.map((a, i) => {
               const supers =
@@ -124,58 +129,47 @@ const pdfFilename = `${slugify(pdfBase)}.pdf`;
               );
             })}
           </ul>
+          <h3>번역자</h3>
+          <p>김신곤, 김주원, 박동우, 이은지, 정우준, 함지율</p>
         </div>
       )
     }
-    {
-      Array.isArray(affiliations) && affiliations.length > 0 && (
-        <div class="meta-container-cell meta-container-cell--affiliations">
-          <h3>Affiliation{affiliations.length > 1 ? "s" : ""}</h3>
-          {hasMultipleAffiliations ? (
-            <ol class="affiliations">
-              {affiliations.map((af) => (
-                <li value={af.id}>
-                  {af.url ? (
-                    <a href={af.url} target="_blank" rel="noopener noreferrer">
-                      {af.name}
-                    </a>
-                  ) : (
-                    af.name
-                  )}
-                </li>
-              ))}
-            </ol>
-          ) : (
-            <p>
-              {affiliations[0]?.url ? (
-                <a
-                  href={affiliations[0].url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  {affiliations[0].name}
+    <div class="meta-container-cell meta-container-cell--affiliations">
+      <h3>소속</h3>
+      {hasMultipleAffiliations ? (
+        <ol class="affiliations">
+          {affiliations.map((af) => (
+            <li value={af.id}>
+              {af.url ? (
+                <a href={af.url} target="_blank" rel="noopener noreferrer">
+                  {af.name}
                 </a>
               ) : (
-                affiliations[0]?.name
+                af.name
               )}
-            </p>
-          )}
-        </div>
-      )
-    }
+            </li>
+          ))}
+        </ol>
+      ) : affiliations?.[0]?.url ? (
+        <p>
+          <a href={affiliations[0].url} target="_blank" rel="noopener noreferrer">
+            {affiliations[0].name}
+          </a>
+        </p>
+      ) : (
+        (affiliations?.[0]?.name || affiliation) && <p>{affiliations?.[0]?.name || affiliation}</p>
+      )}
+      <p>
+        <a href="https://huggingface.co/huggingface-KREW" target="_blank" rel="noopener noreferrer">
+          Hugging Face KREW
+        </a> (번역)
+      </p>
+    </div>
     {
-      (!affiliations || affiliations.length === 0) && affiliation && (
-        <div class="meta-container-cell meta-container-cell--affiliations">
-          <h3>Affiliation</h3>
-          <p>{affiliation}</p>
-        </div>
-      )
-    }
-    {
-      published && (
+      publishedLabel && (
         <div class="meta-container-cell meta-container-cell--published">
-          <h3>Published</h3>
-          <p>{published}</p>
+          <h3>발행일</h3>
+          <p>{publishedLabel}</p>
         </div>
       )
     }
@@ -209,9 +203,9 @@ const pdfFilename = `${slugify(pdfBase)}.pdf`;
               class="button"
               href={`/${pdfFilename}`}
               download={pdfFilename}
-              aria-label={`Download PDF ${pdfFilename}`}
+              aria-label={`PDF 다운로드 ${pdfFilename}`}
             >
-              Download PDF
+              PDF 다운로드
             </a>
           </p>
           <div class="pdf-locked" style="display: none;">
